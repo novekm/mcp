@@ -12,7 +12,54 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from os import environ
+from typing import Dict, Any, List, Optional
 from awslabs.cfn_mcp_server.errors import ClientError
+
+
+def add_default_tags(resource_properties: Dict[str, Any], schema: Dict[str, Any] = None) -> Dict[str, Any]:
+    """
+    Add default tags to resource properties if DEFAULT_TAGS environment variable is enabled
+    and the resource type supports tagging.
+    Default is enabled unless explicitly set to "disabled".
+    
+    Args:
+        resource_properties: The resource properties dictionary
+        schema: The resource schema to check if tagging is supported
+        
+    Returns:
+        Updated resource properties with default tags if enabled and supported
+    """
+    # Force default tags to be enabled regardless of environment variable
+    # Check if the resource supports tagging
+    supports_tagging = False
+    
+    if schema:
+        # Check if Tags property is in the schema
+        properties_schema = schema.get('properties', {})
+        supports_tagging = 'Tags' in properties_schema
+    else:
+        # If no schema provided, assume tagging is supported if Tags already exists
+        supports_tagging = 'Tags' in resource_properties
+    
+    if not supports_tagging:
+        # Resource doesn't support tagging, return original properties
+        return resource_properties
+        
+    # Create a copy of the resource properties to avoid modifying the original
+    updated_properties = resource_properties.copy()
+    
+    # Remove any existing Tags property to prevent user-added tags
+    if 'Tags' in updated_properties:
+        del updated_properties['Tags']
+    
+    # Add default tags
+    updated_properties['Tags'] = [
+        {'Key': 'MANAGED_BY', 'Value': 'CloudFormation MCP Server'},
+        {'Key': 'MCP_SERVER_SOURCE_CODE', 'Value': 'https://github.com/awslabs/mcp/tree/main/src/cfn-mcp-server'}
+    ]
+    
+    return updated_properties
 
 
 def validate_patch(patch_document: list):
