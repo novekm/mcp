@@ -18,13 +18,15 @@ from awslabs.cfn_mcp_server.context import Context
 from awslabs.cfn_mcp_server.errors import ClientError
 from awslabs.cfn_mcp_server.server import (
     create_resource,
-    create_template,
     delete_resource,
     get_resource,
     get_resource_request_status,
     get_resource_schema_information,
     list_resources,
     update_resource,
+)
+from awslabs.cfn_mcp_server.server import (
+    create_template_tool as create_template,
 )
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -84,9 +86,7 @@ class TestTools:
         )
 
         # Check the result
-        assert result == {
-            'properties': [],
-        }
+        assert result == {'properties': []}
 
     async def test_list_resources_no_type(self):
         """Testing no type provided."""
@@ -189,11 +189,21 @@ class TestTools:
         mock_cloudcontrol_client = MagicMock(update_resource=mock_update_resource_return_value)
         mock_get_aws_client.return_value = mock_cloudcontrol_client
 
+        # Mock aws_session_info and security_check_result
+        aws_session_info = {
+            'account_id': '123456789012',
+            'region': 'us-east-1',
+            'readonly_mode': False,
+        }
+        security_check_result = {'passed': True, 'failed_checks': []}
+
         # Call the function
         result = await update_resource(
             resource_type='AWS::CodeStarConnections::Connection',
             identifier='identifier',
             patch_document=[{'op': 'remove', 'path': '/item'}],
+            aws_session_info=aws_session_info,
+            security_check_result=security_check_result,
         )
 
         # Check the result
@@ -231,10 +241,20 @@ class TestTools:
         mock_cloudcontrol_client = MagicMock(create_resource=mock_create_resource_return_value)
         mock_get_aws_client.return_value = mock_cloudcontrol_client
 
+        # Mock aws_session_info and security_check_result
+        aws_session_info = {
+            'account_id': '123456789012',
+            'region': 'us-east-1',
+            'readonly_mode': False,
+        }
+        security_check_result = {'passed': True, 'failed_checks': []}
+
         # Call the function
         result = await create_resource(
             resource_type='AWS::CodeStarConnections::Connection',
             properties={'ConnectionName': 'Name'},
+            aws_session_info=aws_session_info,
+            security_check_result=security_check_result,
         )
 
         # Check the result
@@ -272,9 +292,19 @@ class TestTools:
         mock_cloudcontrol_client = MagicMock(delete_resource=mock_delete_resource_return_value)
         mock_get_aws_client.return_value = mock_cloudcontrol_client
 
+        # Mock aws_session_info
+        aws_session_info = {
+            'account_id': '123456789012',
+            'region': 'us-east-1',
+            'readonly_mode': False,
+        }
+
         # Call the function
         result = await delete_resource(
-            resource_type='AWS::CodeStarConnections::Connection', identifier='Identifier'
+            resource_type='AWS::CodeStarConnections::Connection',
+            identifier='Identifier',
+            confirmed=True,
+            aws_session_info=aws_session_info,
         )
 
         # Check the result
@@ -290,11 +320,11 @@ class TestTools:
         with pytest.raises(ClientError):
             await get_resource_request_status(request_token='Token')
 
-    @patch('awslabs.cfn_mcp_server.server.create_template_impl')
-    async def test_create_template(self, mock_create_template_impl):
+    @patch('awslabs.cfn_mcp_server.iac_generator.create_template')
+    async def test_create_template(self, mock_create_template):
         """Testing create_template function."""
         # Setup the mock
-        mock_create_template_impl.return_value = {
+        mock_create_template.return_value = {
             'status': 'INITIATED',
             'template_id': 'test-template-id',
             'message': 'Template generation initiated.',
@@ -317,4 +347,4 @@ class TestTools:
         }
 
         # Verify the implementation was called with the correct parameters
-        mock_create_template_impl.assert_called_once()
+        mock_create_template.assert_called_once()

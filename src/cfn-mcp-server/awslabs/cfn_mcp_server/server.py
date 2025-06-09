@@ -27,7 +27,7 @@ from awslabs.cfn_mcp_server.cloud_control_utils import (
 )
 from awslabs.cfn_mcp_server.context import Context
 from awslabs.cfn_mcp_server.errors import ClientError, handle_aws_api_error
-from awslabs.cfn_mcp_server.iac_generator import create_template as create_template_impl
+from awslabs.cfn_mcp_server.iac_generator import create_template
 from awslabs.cfn_mcp_server.schema_manager import schema_manager
 from mcp.server.fastmcp import FastMCP
 from os import environ
@@ -93,7 +93,6 @@ Let me execute this plan step by step.
 6. WAIT for my confirmation before proceeding
 7. Create resource ONLY after my explicit approval
 8. Verify successful creation
-9. Offer CloudFormation template backup
 
 ### FOR UPDATE OPERATIONS:
 1. Check environment variables and get AWS session info
@@ -104,7 +103,6 @@ Let me execute this plan step by step.
 6. WAIT for my confirmation before proceeding
 7. Update resource ONLY after my explicit approval
 8. Verify successful update
-9. Offer CloudFormation template backup
 
 ### FOR DELETE OPERATIONS:
 1. Check environment variables and get AWS session info
@@ -914,7 +912,7 @@ async def get_resource_request_status(
 
 
 @mcp.tool()
-async def create_template(
+async def create_template_tool(
     template_name: str | None = Field(None, description='Name for the generated template'),
     resources: list | None = Field(
         None,
@@ -992,7 +990,7 @@ async def create_template(
            convert_to="terraform"
        )
     """
-    return await create_template_impl(
+    return await create_template(
         template_name=template_name,
         resources=resources,
         output_format=output_format,
@@ -1005,7 +1003,7 @@ async def create_template(
 
 
 def _check_checkov_installed() -> dict:
-    """Check if Checkov is installed without attempting installation.
+    """Check if Checkov is installed and install it if not.
 
     Returns:
         A dictionary with status information:
@@ -1029,11 +1027,29 @@ def _check_checkov_installed() -> dict:
             'needs_user_action': False,
         }
     except FileNotFoundError:
-        return {
-            'installed': False,
-            'message': 'Checkov is required for security checks but is not installed. Would you like help installing it?',
-            'needs_user_action': True,
-        }
+        # Attempt to install Checkov
+        try:
+            # Install Checkov using pip
+            print('Checkov not found, attempting to install...')
+            subprocess.run(
+                ['pip', 'install', 'checkov'],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            print('Successfully installed Checkov')
+            return {
+                'installed': True,
+                'message': 'Checkov was automatically installed',
+                'needs_user_action': False,
+            }
+        except subprocess.CalledProcessError as e:
+            # Installation failed
+            return {
+                'installed': False,
+                'message': f'Failed to install Checkov: {e}. Please install it manually with "pip install checkov".',
+                'needs_user_action': True,
+            }
 
 
 @mcp.tool()

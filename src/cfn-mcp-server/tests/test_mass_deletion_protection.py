@@ -16,7 +16,9 @@
 import pytest
 from awslabs.cfn_mcp_server.errors import ClientError
 from awslabs.cfn_mcp_server.server import (
-    create_template,
+    create_template_tool as create_template,
+)
+from awslabs.cfn_mcp_server.server import (
     delete_resource,
 )
 from unittest.mock import MagicMock, patch
@@ -40,9 +42,19 @@ class TestMassDeletionProtection:
         }
         mock_get_aws_client.return_value = mock_client
 
+        # Mock aws_session_info
+        aws_session_info = {
+            'account_id': '123456789012',
+            'region': 'us-east-1',
+            'readonly_mode': False,
+        }
+
         # Call the function
         result = await delete_resource(
-            resource_type='AWS::S3::Bucket', identifier='test-bucket', confirmed=True
+            resource_type='AWS::S3::Bucket',
+            identifier='test-bucket',
+            confirmed=True,
+            aws_session_info=aws_session_info,
         )
 
         # Verify results
@@ -58,11 +70,11 @@ class TestMassDeletionProtection:
                 resource_type='AWS::S3::Bucket', identifier='test-bucket', confirmed=False
             )
 
-    @patch('awslabs.cfn_mcp_server.iac_generator.create_template_impl')
-    async def test_create_template_for_resource_cleanup(self, mock_create_template_impl):
+    @patch('awslabs.cfn_mcp_server.iac_generator.create_template')
+    async def test_create_template_for_resource_cleanup(self, mock_create_template):
         """Test creating a template for resource cleanup."""
         # Setup mocks
-        mock_create_template_impl.return_value = {
+        mock_create_template.return_value = {
             'status': 'INITIATED',
             'template_id': 'test-template-id',
             'message': 'Template generation initiated.',
@@ -84,7 +96,7 @@ class TestMassDeletionProtection:
         # Verify results
         assert result['status'] == 'INITIATED'
         assert result['template_id'] == 'test-template-id'
-        mock_create_template_impl.assert_called_once_with(
+        mock_create_template.assert_called_once_with(
             template_name='cleanup-template',
             resources=[
                 {

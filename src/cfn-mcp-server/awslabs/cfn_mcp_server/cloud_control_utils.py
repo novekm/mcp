@@ -31,7 +31,15 @@ def add_default_tags(
     Returns:
         Updated resource properties with default tags if enabled and supported
     """
-    # Force default tags to be enabled regardless of environment variable
+    import os
+
+    # Check if DEFAULT_TAGS is explicitly disabled
+    default_tags_enabled = os.environ.get('DEFAULT_TAGS', 'enabled').lower() != 'disabled'
+
+    if not default_tags_enabled:
+        # If default tags are disabled, return original properties
+        return resource_properties
+
     # Check if the resource supports tagging
     supports_tagging = False
 
@@ -50,18 +58,28 @@ def add_default_tags(
     # Create a copy of the resource properties to avoid modifying the original
     updated_properties = resource_properties.copy()
 
-    # Remove any existing Tags property to prevent user-added tags
+    # Get existing tags if any
+    existing_tags = []
     if 'Tags' in updated_properties:
-        del updated_properties['Tags']
+        if isinstance(updated_properties['Tags'], list):
+            existing_tags = updated_properties['Tags'].copy()
+        elif isinstance(updated_properties['Tags'], dict):
+            # Convert dict-style tags to list-style tags
+            existing_tags = [{'Key': k, 'Value': v} for k, v in updated_properties['Tags'].items()]
 
     # Add default tags
-    updated_properties['Tags'] = [
+    default_tags = [
         {'Key': 'MANAGED_BY', 'Value': 'CloudFormation MCP Server'},
         {
             'Key': 'MCP_SERVER_SOURCE_CODE',
             'Value': 'https://github.com/awslabs/mcp/tree/main/src/cfn-mcp-server',
         },
     ]
+
+    # Combine existing and default tags, ensuring no duplicates
+    default_tag_keys = {tag['Key'] for tag in default_tags}
+    filtered_existing_tags = [tag for tag in existing_tags if tag['Key'] not in default_tag_keys]
+    updated_properties['Tags'] = filtered_existing_tags + default_tags
 
     return updated_properties
 
