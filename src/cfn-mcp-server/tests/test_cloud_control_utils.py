@@ -258,7 +258,7 @@ def test_add_default_tags_enabled_dict_tags():
 
         # Convert tags to dict for easier checking
         tags_dict = {tag['Key']: tag['Value'] for tag in result['Tags']}
-        
+
         # Check that original tag is preserved
         assert tags_dict['ExistingTag'] == 'ExistingValue'
 
