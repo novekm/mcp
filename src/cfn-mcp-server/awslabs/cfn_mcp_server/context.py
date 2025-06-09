@@ -33,7 +33,7 @@ class Context:
         if cls._instance is None:
             raise ServerError('Context was not initialized')
         return cls._instance._readonly_mode
-        
+
     @classmethod
     def is_readonly_mode(cls) -> str:
         """Returns a message about readonly mode if enabled, empty string otherwise."""
@@ -50,15 +50,15 @@ This server is running in read-only mode. You can only:
 
 You CANNOT create, update, or delete any AWS resources.
 """
-        return ""
-        
+        return ''
+
     @classmethod
     def get_aws_info(cls):
         """Get AWS account information."""
         return {
-            "profile": cls.aws_profile,
-            "account_id": cls.aws_account_id,
-            "region": cls.aws_region
+            'profile': cls.aws_profile,
+            'account_id': cls.aws_account_id,
+            'region': cls.aws_region,
         }
 
     @classmethod

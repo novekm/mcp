@@ -48,31 +48,37 @@ def get_aws_client(service_name, region_name=None):
 
     # Get credential source preference
     cred_source = environ.get('AWS_CREDENTIAL_SOURCE', 'auto').lower()
-    
+
     # Credential detection and client creation
     try:
         if cred_source == 'env' or cred_source == 'environment':
             # Force use of environment variables
             print(f'Creating {service_name} client using environment variables')
             if not environ.get('AWS_ACCESS_KEY_ID') or not environ.get('AWS_SECRET_ACCESS_KEY'):
-                raise ClientError('AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set when using environment credentials')
+                raise ClientError(
+                    'AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set when using environment credentials'
+                )
             session = Session(
                 aws_access_key_id=environ.get('AWS_ACCESS_KEY_ID'),
                 aws_secret_access_key=environ.get('AWS_SECRET_ACCESS_KEY'),
-                aws_session_token=environ.get('AWS_SESSION_TOKEN')
+                aws_session_token=environ.get('AWS_SESSION_TOKEN'),
             )
         elif cred_source == 'profile':
             # Force use of profile from credentials file
             profile_name = environ.get('AWS_PROFILE')
             if not profile_name:
-                raise ClientError('AWS_PROFILE environment variable must be set when using profile credential source')
+                raise ClientError(
+                    'AWS_PROFILE environment variable must be set when using profile credential source'
+                )
             print(f'Creating {service_name} client using profile: {profile_name}')
             session = Session(profile_name=profile_name)
         elif cred_source == 'sso':
             # Use SSO token cache
             profile_name = environ.get('AWS_PROFILE')
             if not profile_name:
-                raise ClientError('AWS_PROFILE environment variable must be set when using SSO credential source')
+                raise ClientError(
+                    'AWS_PROFILE environment variable must be set when using SSO credential source'
+                )
             print(f'Creating {service_name} client using SSO profile: {profile_name}')
             session = Session(profile_name=profile_name)
         elif cred_source == 'instance' or cred_source == 'role':
@@ -83,14 +89,14 @@ def get_aws_client(service_name, region_name=None):
             # Use default credential provider chain
             print(f'Creating {service_name} client using default AWS credential provider chain')
             session = Session()
-        
+
         client = session.client(service_name, region_name=region_name, config=session_config)
-        
+
         # Verify credentials by making a simple call if it's the STS service
         if service_name == 'sts':
             identity = client.get_caller_identity()
-            print(f"Successfully authenticated as: {identity.get('Arn')}")
-        
+            print(f'Successfully authenticated as: {identity.get("Arn")}')
+
         print(f'Successfully created {service_name} client for region {region_name}')
         return client
 
