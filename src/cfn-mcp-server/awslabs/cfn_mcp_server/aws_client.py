@@ -43,7 +43,7 @@ def get_aws_client(service_name, region_name=None):
         Boto3 client for the specified service
     """
     # Default region handling
-    if not region_name:
+    if not region_name or not isinstance(region_name, str):
         region_name = environ.get('AWS_REGION', 'us-east-1')
 
     # Get credential source preference

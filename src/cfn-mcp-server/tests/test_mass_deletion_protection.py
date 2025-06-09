@@ -91,6 +91,7 @@ class TestMassDeletionProtection:
             ],
             output_format='YAML',
             deletion_policy='DELETE',
+            update_replace_policy='RETAIN',
         )
 
         # Verify results

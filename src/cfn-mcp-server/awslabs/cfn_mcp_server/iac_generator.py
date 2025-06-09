@@ -64,7 +64,7 @@ async def create_template(
         raise ClientError("update_replace_policy must be one of 'RETAIN', 'DELETE', or 'SNAPSHOT'")
 
     # Get CloudFormation client
-    cfn_client = get_aws_client('cloudformation', region_name)
+    cfn_client = get_aws_client('cloudformation', region_name if isinstance(region_name, str) else None)
 
     # Case 1: Check status or retrieve template for an existing template generation process
     if template_id:

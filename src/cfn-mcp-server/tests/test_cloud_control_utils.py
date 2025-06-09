@@ -256,13 +256,16 @@ def test_add_default_tags_enabled_dict_tags():
         # Check that default tags were added
         assert len(result['Tags']) == 3
 
+        # Convert tags to dict for easier checking
+        tags_dict = {tag['Key']: tag['Value'] for tag in result['Tags']}
+        
         # Check that original tag is preserved
-        assert result['Tags']['ExistingTag'] == 'ExistingValue'
+        assert tags_dict['ExistingTag'] == 'ExistingValue'
 
         # Check that default tags are added
-        assert result['Tags']['MANAGED_BY'] == 'CloudFormation MCP Server'
+        assert tags_dict['MANAGED_BY'] == 'CloudFormation MCP Server'
         assert (
-            result['Tags']['MCP_SERVER_SOURCE_CODE']
+            tags_dict['MCP_SERVER_SOURCE_CODE']
             == 'https://github.com/awslabs/mcp/tree/main/src/cfn-mcp-server'
         )
 
