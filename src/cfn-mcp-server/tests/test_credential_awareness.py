@@ -14,8 +14,8 @@
 """Tests for the credential awareness in the cfn MCP Server."""
 
 import pytest
-from awslabs.cfn_mcp_server.server import get_aws_account_info, get_aws_profile_info
-from unittest.mock import patch, MagicMock
+from awslabs.cfn_mcp_server.server import get_aws_profile_info, get_aws_session_info
+from unittest.mock import MagicMock, patch
 
 
 @pytest.mark.asyncio
@@ -24,25 +24,25 @@ class TestCredentialAwareness:
 
     @patch('awslabs.cfn_mcp_server.server.get_aws_client')
     @patch('awslabs.cfn_mcp_server.server.environ')
-    async def test_get_aws_account_info(self, mock_environ, mock_get_aws_client):
-        """Test getting AWS account info."""
+    async def test_get_aws_session_info(self, mock_environ, mock_get_aws_client):
+        """Test getting AWS session info."""
         # Setup mocks
         mock_sts_client = MagicMock()
         mock_sts_client.get_caller_identity.return_value = {
             'Account': '123456789012',
-            'Arn': 'arn:aws:iam::123456789012:user/test-user'
+            'Arn': 'arn:aws:iam::123456789012:user/test-user',
         }
         mock_get_aws_client.return_value = mock_sts_client
-        
+
         mock_environ.get.side_effect = lambda key, default=None: {
             'AWS_CREDENTIAL_SOURCE': 'profile',
             'AWS_PROFILE': 'test-profile',
-            'AWS_REGION': 'us-east-1'
+            'AWS_REGION': 'us-east-1',
         }.get(key, default)
-        
+
         # Call the function
-        result = await get_aws_account_info()
-        
+        result = await get_aws_session_info({'properly_configured': True})
+
         # Verify results
         assert result['profile'] == 'test-profile'
         assert result['account_id'] == '123456789012'
@@ -58,19 +58,19 @@ class TestCredentialAwareness:
         mock_sts_client = MagicMock()
         mock_sts_client.get_caller_identity.return_value = {
             'Account': '123456789012',
-            'Arn': 'arn:aws:iam::123456789012:user/test-user'
+            'Arn': 'arn:aws:iam::123456789012:user/test-user',
         }
         mock_get_aws_client.return_value = mock_sts_client
-        
+
         mock_environ.get.side_effect = lambda key, default=None: {
             'AWS_CREDENTIAL_SOURCE': 'env',
             'AWS_PROFILE': 'default',
-            'AWS_REGION': 'us-west-2'
+            'AWS_REGION': 'us-west-2',
         }.get(key, default)
-        
+
         # Call the function
         result = get_aws_profile_info()
-        
+
         # Verify results
         assert result['profile'] == 'default'
         assert result['account_id'] == '123456789012'
@@ -83,17 +83,17 @@ class TestCredentialAwareness:
     def test_get_aws_profile_info_error(self, mock_environ, mock_get_aws_client):
         """Test getting AWS profile info with an error."""
         # Setup mocks
-        mock_get_aws_client.side_effect = Exception("Failed to get client")
-        
+        mock_get_aws_client.side_effect = Exception('Failed to get client')
+
         mock_environ.get.side_effect = lambda key, default=None: {
             'AWS_CREDENTIAL_SOURCE': 'auto',
             'AWS_PROFILE': 'default',
-            'AWS_REGION': 'us-east-1'
+            'AWS_REGION': 'us-east-1',
         }.get(key, default)
-        
+
         # Call the function
         result = get_aws_profile_info()
-        
+
         # Verify results
         assert result['profile'] == 'default'
         assert 'error' in result

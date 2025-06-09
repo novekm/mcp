@@ -13,7 +13,6 @@
 # limitations under the License.
 """Tests for the output formatting in the cfn MCP Server."""
 
-import pytest
 from awslabs.cfn_mcp_server.server import get_output_format_instructions
 from unittest.mock import patch
 
@@ -26,10 +25,10 @@ class TestOutputFormat:
         """Test dynamic output format."""
         # Setup mock
         mock_environ.get.return_value = 'dynamic'
-        
+
         # Call the function
         result = get_output_format_instructions()
-        
+
         # Verify result contains dynamic format instructions
         assert 'Dynamically choose the most appropriate format' in result
         assert 'CloudFormation templates' in result
@@ -41,10 +40,10 @@ class TestOutputFormat:
         """Test emoji output format."""
         # Setup mock
         mock_environ.get.return_value = 'emoji'
-        
+
         # Call the function
         result = get_output_format_instructions()
-        
+
         # Verify result contains emoji format instructions
         assert 'emoji-rich formatting' in result
         assert '🔑 for keys' in result
@@ -57,10 +56,10 @@ class TestOutputFormat:
         """Test JSON output format."""
         # Setup mock
         mock_environ.get.return_value = 'json'
-        
+
         # Call the function
         result = get_output_format_instructions()
-        
+
         # Verify result contains JSON format instructions
         assert 'JSON formatting' in result
         assert 'proper indentation' in result
@@ -71,10 +70,10 @@ class TestOutputFormat:
         """Test YAML output format."""
         # Setup mock
         mock_environ.get.return_value = 'yaml'
-        
+
         # Call the function
         result = get_output_format_instructions()
-        
+
         # Verify result contains YAML format instructions
         assert 'YAML formatting' in result
         assert 'dashes for arrays' in result
@@ -85,9 +84,9 @@ class TestOutputFormat:
         """Test default output format when not specified."""
         # Setup mock to return None
         mock_environ.get.return_value = None
-        
+
         # Call the function
         result = get_output_format_instructions()
-        
+
         # Verify result defaults to dynamic format
         assert 'Dynamically choose the most appropriate format' in result

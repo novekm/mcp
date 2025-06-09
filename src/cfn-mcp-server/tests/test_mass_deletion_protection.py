@@ -16,10 +16,10 @@
 import pytest
 from awslabs.cfn_mcp_server.errors import ClientError
 from awslabs.cfn_mcp_server.server import (
-    delete_resource,
     create_template,
+    delete_resource,
 )
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 
 @pytest.mark.asyncio
@@ -39,14 +39,12 @@ class TestMassDeletionProtection:
             }
         }
         mock_get_aws_client.return_value = mock_client
-        
+
         # Call the function
         result = await delete_resource(
-            resource_type='AWS::S3::Bucket',
-            identifier='test-bucket',
-            confirmed=True
+            resource_type='AWS::S3::Bucket', identifier='test-bucket', confirmed=True
         )
-        
+
         # Verify results
         assert result['status'] == 'SUCCESS'
         assert result['resource_type'] == 'AWS::S3::Bucket'
@@ -57,9 +55,7 @@ class TestMassDeletionProtection:
         # Call the function and expect it to fail
         with pytest.raises(ClientError, match='Please confirm the deletion'):
             await delete_resource(
-                resource_type='AWS::S3::Bucket',
-                identifier='test-bucket',
-                confirmed=False
+                resource_type='AWS::S3::Bucket', identifier='test-bucket', confirmed=False
             )
 
     @patch('awslabs.cfn_mcp_server.iac_generator.create_template_impl')
@@ -71,23 +67,31 @@ class TestMassDeletionProtection:
             'template_id': 'test-template-id',
             'message': 'Template generation initiated.',
         }
-        
+
         # Call the function
         result = await create_template(
             template_name='cleanup-template',
             resources=[
-                {'ResourceType': 'AWS::S3::Bucket', 'ResourceIdentifier': {'BucketName': 'test-bucket'}}
+                {
+                    'ResourceType': 'AWS::S3::Bucket',
+                    'ResourceIdentifier': {'BucketName': 'test-bucket'},
+                }
             ],
             output_format='YAML',
-            deletion_policy='DELETE'
+            deletion_policy='DELETE',
         )
-        
+
         # Verify results
         assert result['status'] == 'INITIATED'
         assert result['template_id'] == 'test-template-id'
         mock_create_template_impl.assert_called_once_with(
             template_name='cleanup-template',
-            resources=[{'ResourceType': 'AWS::S3::Bucket', 'ResourceIdentifier': {'BucketName': 'test-bucket'}}],
+            resources=[
+                {
+                    'ResourceType': 'AWS::S3::Bucket',
+                    'ResourceIdentifier': {'BucketName': 'test-bucket'},
+                }
+            ],
             output_format='YAML',
             deletion_policy='DELETE',
             update_replace_policy='RETAIN',

@@ -16,7 +16,7 @@
 import pytest
 from awslabs.cfn_mcp_server.aws_client import get_aws_client
 from awslabs.cfn_mcp_server.errors import ClientError
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 
 @pytest.mark.asyncio
@@ -45,7 +45,9 @@ class TestClient:
         session_instance = MagicMock()
         session_instance.client.return_value = client
         mock_session.return_value = session_instance
-        mock_environ.get.side_effect = lambda key, default=None: 'us-east-1' if key == 'AWS_REGION' else 'auto'
+        mock_environ.get.side_effect = (
+            lambda key, default=None: 'us-east-1' if key == 'AWS_REGION' else 'auto'
+        )
 
         result = get_aws_client('cloudcontrol')
 
@@ -59,13 +61,13 @@ class TestClient:
         session_instance = MagicMock()
         session_instance.client.return_value = client
         mock_session.return_value = session_instance
-        
+
         # Set up environment variables
         mock_environ.get.side_effect = lambda key, default=None: {
             'AWS_CREDENTIAL_SOURCE': 'env',
             'AWS_ACCESS_KEY_ID': 'test-key',
             'AWS_SECRET_ACCESS_KEY': 'test-secret',
-            'AWS_REGION': 'us-east-1'
+            'AWS_REGION': 'us-east-1',
         }.get(key, default)
 
         result = get_aws_client('cloudcontrol')
@@ -74,7 +76,7 @@ class TestClient:
         mock_session.assert_called_once_with(
             aws_access_key_id='test-key',
             aws_secret_access_key='test-secret',
-            aws_session_token=None
+            aws_session_token=None,
         )
 
     @patch('awslabs.cfn_mcp_server.aws_client.Session')
@@ -85,12 +87,12 @@ class TestClient:
         session_instance = MagicMock()
         session_instance.client.return_value = client
         mock_session.return_value = session_instance
-        
+
         # Set up environment variables
         mock_environ.get.side_effect = lambda key, default=None: {
             'AWS_CREDENTIAL_SOURCE': 'profile',
             'AWS_PROFILE': 'test-profile',
-            'AWS_REGION': 'us-east-1'
+            'AWS_REGION': 'us-east-1',
         }.get(key, default)
 
         result = get_aws_client('cloudcontrol')
@@ -106,11 +108,11 @@ class TestClient:
         session_instance = MagicMock()
         session_instance.client.return_value = client
         mock_session.return_value = session_instance
-        
+
         # Set up environment variables
         mock_environ.get.side_effect = lambda key, default=None: {
             'AWS_CREDENTIAL_SOURCE': 'instance',
-            'AWS_REGION': 'us-east-1'
+            'AWS_REGION': 'us-east-1',
         }.get(key, default)
 
         result = get_aws_client('cloudcontrol')
@@ -125,10 +127,12 @@ class TestClient:
         # Set up environment variables
         mock_environ.get.side_effect = lambda key, default=None: {
             'AWS_CREDENTIAL_SOURCE': 'env',
-            'AWS_REGION': 'us-east-1'
+            'AWS_REGION': 'us-east-1',
         }.get(key, default)
 
-        with pytest.raises(ClientError, match='AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set'):
+        with pytest.raises(
+            ClientError, match='AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set'
+        ):
             get_aws_client('cloudcontrol')
 
     @patch('awslabs.cfn_mcp_server.aws_client.Session')
@@ -138,7 +142,7 @@ class TestClient:
         # Set up environment variables
         mock_environ.get.side_effect = lambda key, default=None: {
             'AWS_CREDENTIAL_SOURCE': 'profile',
-            'AWS_REGION': 'us-east-1'
+            'AWS_REGION': 'us-east-1',
         }.get(key, default)
 
         with pytest.raises(ClientError, match='AWS_PROFILE environment variable must be set'):
