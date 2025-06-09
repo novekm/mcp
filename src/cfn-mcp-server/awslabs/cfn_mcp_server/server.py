@@ -35,74 +35,9 @@ from pydantic import Field
 from typing import Any, Literal
 
 
-def get_output_format_instructions():
-    """Get the output format instructions based on the OUTPUT_FORMAT environment variable."""
-    output_format = environ.get('OUTPUT_FORMAT', 'dynamic').lower()
-
-    if output_format == 'emoji':
-        return """
-    ## Output Format Guidelines
-
-    CRITICAL: You MUST format ALL resource information using emoji-rich formatting:
-
-    1. Use markdown headers (##) for main sections
-    2. Use bold text (**text**) for property labels
-    3. ALWAYS use these emoji icons as visual indicators:
-       - 🔑 for keys, credentials, and security elements
-       - 🪣 for S3 buckets
-       - 💾 for databases
-       - 🖥️ for compute resources
-       - 🔒 for security features
-       - ⚙️ for configuration settings
-    4. Use checkmarks (✅) to highlight enabled features
-    5. Use indentation and bullet points (- ) for hierarchical structure
-    6. Use line breaks to separate different sections
-    7. NEVER output raw JSON or YAML - always format it with emojis and clear structure
-    8. Format resource properties in a table-like structure with emojis
-    """
-    elif output_format == 'json':
-        return """
-    ## Output Format Guidelines
-
-    Present all resource information in clean, formatted JSON:
-
-    1. Use proper JSON formatting with indentation
-    2. Ensure all keys are quoted
-    3. Format arrays and nested objects with proper indentation
-    4. Remove unnecessary whitespace
-    5. Use a consistent style throughout
-    """
-    elif output_format == 'yaml':
-        return """
-    ## Output Format Guidelines
-
-    Present all resource information in clean, formatted YAML:
-
-    1. Use proper YAML formatting with indentation (2 spaces)
-    2. Use dashes for arrays
-    3. Avoid quotes unless necessary
-    4. Use multiline strings with | for longer text
-    5. Include comments where helpful with #
-    """
-    else:  # dynamic or any other value
-        return """
-    ## Output Format Guidelines
-
-    Dynamically choose the most appropriate format based on context:
-
-    1. For CloudFormation templates, use YAML with proper indentation
-    2. For JSON data, use clean JSON formatting
-    3. For Terraform resources, use HCL formatting
-    4. For code snippets, use appropriate syntax highlighting
-    5. For general information, use markdown with headers, lists, and emphasis
-    6. For complex resources, use tables or structured formatting
-    7. Always optimize for readability and clarity
-    """
-
-
 mcp = FastMCP(
     'awslabs.cfn-mcp-server',
-    instructions=f"""
+    instructions="""
 # CloudFormation MCP - Complete Workflow Instructions
 
 ## ENVIRONMENT VARIABLE HANDLING
@@ -206,8 +141,6 @@ If any step fails:
 
 I expect you to follow these instructions for EVERY AWS resource operation request,
 without exception.
-
-{get_output_format_instructions()}
     """,
     dependencies=['pydantic', 'loguru', 'boto3', 'botocore', 'checkov'],
 )
@@ -1547,9 +1480,7 @@ def main():
     print(f'AWS Account ID: {aws_info.get("account_id", "Unknown")}')
     print(f'AWS Region: {aws_info.get("region")}')
 
-    # Display output format
-    output_format = environ.get('OUTPUT_FORMAT', 'dynamic')
-    print(f'Output Format: {output_format}')
+    # Output format display removed
 
     # Display read-only mode status
     if args.readonly:
