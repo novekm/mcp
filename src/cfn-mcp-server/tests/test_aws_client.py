@@ -65,8 +65,8 @@ class TestClient:
         # Set up environment variables
         mock_environ.get.side_effect = lambda key, default=None: {
             'AWS_CREDENTIAL_SOURCE': 'env',
-            'AWS_ACCESS_KEY_ID': 'test-key',
-            'AWS_SECRET_ACCESS_KEY': 'test-secret',
+            'AWS_ACCESS_KEY_ID': 'test-key',  # pragma: allowlist secret
+            'AWS_SECRET_ACCESS_KEY': 'test-secret',  # pragma: allowlist secret
             'AWS_REGION': 'us-east-1',
         }.get(key, default)
 
@@ -74,8 +74,8 @@ class TestClient:
 
         assert result == client
         mock_session.assert_called_once_with(
-            aws_access_key_id='test-key',
-            aws_secret_access_key='test-secret',
+            aws_access_key_id='test-key',  # pragma: allowlist secret
+            aws_secret_access_key='test-secret',  # pragma: allowlist secret
             aws_session_token=None,
         )
 
