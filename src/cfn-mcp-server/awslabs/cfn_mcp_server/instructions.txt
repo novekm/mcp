@@ -1,0 +1,43 @@
+# Note: This file is not used by the CloudFormation MCP server. It is not used for prompt/context loading.
+# This is only for reference, explaining the default logic of the tools in the MCP server.
+# This MCP server uses a combination of prompt/context loading and ordering through parameter dependencies to enforce order the tools an LLM may use.
+# This is used to ensure the following:
+
+# AWS Session Workflow Instructions
+
+## CRITICAL WORKFLOW REQUIREMENTS
+
+1. ALWAYS call check_environment_variables() FIRST before any AWS operation
+2. ONLY after environment is verified, call get_aws_session_info()
+3. For create/update operations, run security checks with run_checkov()
+4. Pass results from previous steps as parameters to resource operations
+
+## PARAMETER DEPENDENCIES
+
+- get_aws_session_info() requires result from check_environment_variables()
+- create_resource() requires results from get_aws_session_info() and run_checkov()
+- update_resource() requires results from get_aws_session_info() and run_checkov()
+- delete_resource() requires result from get_aws_session_info()
+
+## EXAMPLE WORKFLOW
+
+```
+# Check environment variables first
+env_check = check_environment_variables()
+
+# Only if properly configured, get AWS session info
+if env_check["properly_configured"]:
+    session_info = get_aws_session_info(env_check_result=env_check)
+
+    # Check if readonly mode
+    if session_info["readonly_mode"]:
+        # Inform user about readonly mode
+    else:
+        # For create/update operations, run security checks
+        security_result = run_checkov(...)
+
+        # Pass results to resource operation
+        create_resource(..., aws_session_info=session_info, security_check_result=security_result)
+else:
+    # Help user fix environment variables
+```
