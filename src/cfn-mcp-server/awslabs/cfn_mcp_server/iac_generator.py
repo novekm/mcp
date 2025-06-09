@@ -17,7 +17,7 @@
 import os
 from awslabs.cfn_mcp_server.aws_client import get_aws_client
 from awslabs.cfn_mcp_server.errors import ClientError, handle_aws_api_error
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional
 
 
 async def create_template(
@@ -29,7 +29,6 @@ async def create_template(
     template_id: Optional[str] = None,
     save_to_file: Optional[str] = None,
     region_name: Optional[str] = None,
-    convert_to: Optional[str] = None,
 ) -> Dict:
     """Create a CloudFormation template from existing resources using the IaC Generator API.
 
@@ -47,7 +46,6 @@ async def create_template(
         template_id: ID of an existing template generation process to check status or retrieve template
         save_to_file: Path to save the generated template to a file
         region_name: AWS region name
-        convert_to: Convert the CloudFormation template to another IaC format (terraform, cdk-typescript, cdk-python)
 
     Returns:
         A dictionary containing information about the template generation process or the generated template
@@ -187,27 +185,9 @@ async def _handle_existing_template(
             except Exception as e:
                 raise ClientError(f'Failed to save template to file: {str(e)}')
 
-        # Convert the template to another IaC format if requested
-        converted_template = None
-        if convert_to:
-            convert_to = convert_to.lower()
-            if convert_to == 'terraform' or convert_to == 'tf':
-                # Use the template converter module
-                from awslabs.cfn_mcp_server.template_converter import convert_to_terraform
-                converted_template = convert_to_terraform(template_content)
-                result_message = 'Template generation completed and converted to Terraform.'
-            elif convert_to.startswith('cdk-'):
-                # Handle CDK conversion with language specification
-                from awslabs.cfn_mcp_server.template_converter import convert_to_cdk
-                language = convert_to.split('-')[1] if len(convert_to.split('-')) > 1 else 'typescript'
-                converted_template = convert_to_cdk(template_content, language)
-                result_message = f'Template generation completed and converted to CDK ({language}).'
-            else:
-                # Unsupported format
-                raise ClientError(f"Unsupported conversion format: {convert_to}. Supported formats are: terraform, cdk-typescript, cdk-python")
-        else:
-            result_message = 'Template generation completed.'
-            
+        # Set result message
+        result_message = 'Template generation completed.'
+
         # Return the template and related information
         result = {
             'status': 'COMPLETED',
@@ -217,9 +197,6 @@ async def _handle_existing_template(
             'message': result_message,
         }
 
-        if converted_template:
-            result['converted_template'] = converted_template
-            
         if file_path:
             result['file_path'] = file_path
 
