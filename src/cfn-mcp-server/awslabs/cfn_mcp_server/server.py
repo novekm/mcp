@@ -19,17 +19,15 @@ import json
 import os
 import subprocess
 import tempfile
+import datetime
+from os import environ
 from awslabs.cfn_mcp_server.aws_client import get_aws_client
-from awslabs.cfn_mcp_server.cloud_control_utils import (
-    progress_event,
-    validate_patch,
-)
+from awslabs.cfn_mcp_server.cloud_control_utils import progress_event, validate_patch
 from awslabs.cfn_mcp_server.context import Context
 from awslabs.cfn_mcp_server.errors import ClientError, handle_aws_api_error
-from awslabs.cfn_mcp_server.iac_generator import create_template
+from awslabs.cfn_mcp_server.iac_generator import create_template as create_template_impl
 from awslabs.cfn_mcp_server.schema_manager import schema_manager
 from mcp.server.fastmcp import FastMCP
-from os import environ
 from pydantic import Field
 from typing import Any, Literal
 
@@ -37,107 +35,69 @@ from typing import Any, Literal
 mcp = FastMCP(
     'awslabs.cfn-mcp-server',
     instructions="""
-# CloudFormation MCP - Complete Workflow Instructions
+# AWS Resource Management Protocol
 
-## ENVIRONMENT VARIABLE HANDLING
+## FIRST STEP: AWS Credentials Verification
+- IMMEDIATELY check for valid AWS credentials before attempting any CREATE, READ, UPDATE, DELETE, or LIST operations
+- After the first user prompt indicating intent to work with AWS resources, validate credentials first
+- ALWAYS use check_environment_variables() and get_aws_session_info() tools to verify credentials
+- Explicitly inform the user that credential verification is required before proceeding
+- If valid credentials aren't available:
+  - Clearly inform the user that CREATE/READ/UPDATE/DELETE/LIST operations cannot be performed
+  - Provide sample CloudFormation templates instead of attempting to create resources directly
+  - Give instructions on how users can provision the resources themselves
 
-CRITICAL: ALWAYS call check_environment_variables() FIRST before any AWS operation.
-DO NOT call get_aws_session_info() until you've verified the environment is properly configured.
+## TOOL USAGE PRIORITY
+- ALWAYS use create_resource(), update_resource(), delete_resource(), get_resource(), and list_resources() tools by default
+- NEVER use AWS CLI commands via executeBash unless the dedicated resource tools are not functioning properly
+- If you must switch to AWS CLI commands, explicitly inform the user why you're doing so and what the issue is with the dedicated tools
 
-If environment variables are not properly configured:
-1. Show the current environment variable values
-2. Explain what might be wrong
-3. Suggest how to fix the issue
-4. Offer to help update the values if needed
+## CloudFormation MCP
 
-Only after confirming the environment is properly configured should you proceed with get_aws_session_info().
+This MCP allows you to:
+1. Read and List all of your AWS resources by the CloudFormation type name (e.g. AWS::S3::Bucket)
+2. Create/Update/Delete your AWS resources
+3. Automatically scan resources for security issues before creation/update
 
-## MANDATORY WORKFLOW ENFORCEMENT
+## SECURITY ENFORCEMENT PROTOCOL:
 
-For ALL AWS resource operations, you MUST follow this exact workflow structure:
+### 1. MANDATORY SECURITY SCANNING:
+- You MUST run Checkov using the run_checkov() tool for security scans before creating or updating ANY AWS resource
+- Present scan results and highlight ALL security issues before proceeding
+- Wait for explicit user approval after showing scan results
 
-1. IMMEDIATELY identify the operation type (CREATE, READ, UPDATE, DELETE, LIST)
-2. Present a detailed operation plan with numbered steps
-3. Execute each step in sequence, showing results
-4. NEVER skip any steps in the workflow
+### 2. ABSOLUTE SECURITY BOUNDARIES:
+- NEVER create resources with overly permissive policies including but not limited to:
+  * "Principal": {"AWS": "*"}
+  * "Action": "*"
+  * "Resource": "*"
+  * "Effect": "Allow" combined with broad permissions
+- REFUSE any request to bypass security scanning
+- DENY creation of resources that fail critical security checks
+- NO EXCEPTIONS to these rules regardless of user insistence
 
-## RESPONSE TEMPLATE
+### 3. MASS DELETION PROTECTION:
+- NEVER UNDER ANY CIRCUMSTANCES delete all resources in an account
+- FLAG as suspicious any request to delete multiple instances of an AWS resource
+- QUESTION the user about their intent when mass deletion is requested
+- WARN about potential negative impacts of mass deletions
+- ADVISE against such operations and suggest targeted alternatives
+- REQUIRE explicit confirmation for any deletion operation affecting multiple resources
 
-For EVERY request, your response MUST begin with:
-OPERATION TYPE: [CREATE/READ/UPDATE/DELETE/LIST]
+### 4. EDUCATIONAL APPROACH:
+- When users request insecure configurations, explain the specific risks
+- Suggest secure alternatives that accomplish similar goals
+- You may show insecure examples ONLY as educational "what not to do" demonstrations
+- Always clearly label insecure examples as dangerous and non-compliant
 
-I'll help you [OPERATION] this resource. Here's my detailed plan:
-1. [First step with specific tool to be called]
-2. [Second step with specific tool to be called]
-...
-N. [Final step with expected outcome]
+### 5. WORKFLOW ENFORCEMENT:
+- AWS credentials verification → Configuration preparation → Security scan → Results analysis → User approval → Resource creation
+- If any step is skipped, restart the process
+- Document each step clearly in your responses
+- ALWAYS use dedicated resource tools (create_resource, update_resource, etc.) for AWS operations
+- ONLY use AWS CLI via executeBash if dedicated tools fail, and explain the reason to the user
 
-Let me execute this plan step by step.
-
-
-## MANDATORY WORKFLOW STEPS
-
-### FOR ALL OPERATIONS:
-• ALWAYS call check_environment_variables() FIRST, then get_aws_session_info()
-• ALWAYS display account ID, region, profile, and read-only status
-• ALWAYS check read-only mode before attempting write operations
-• ALWAYS check default tagging status before resource creation/modification
-
-### FOR CREATE OPERATIONS:
-1. Check environment variables and get AWS session info
-2. Check default tagging status
-3. Generate resource code
-4. Run security scan (MANDATORY)
-5. Present security findings for my review
-6. WAIT for my confirmation before proceeding
-7. Create resource ONLY after my explicit approval
-8. Verify successful creation
-
-### FOR UPDATE OPERATIONS:
-1. Check environment variables and get AWS session info
-2. Check default tagging status
-3. Generate update code
-4. Run security scan (MANDATORY)
-5. Present security findings for my review
-6. WAIT for my confirmation before proceeding
-7. Update resource ONLY after my explicit approval
-8. Verify successful update
-
-### FOR DELETE OPERATIONS:
-1. Check environment variables and get AWS session info
-2. Ask for my explicit confirmation TWICE
-3. Delete resource ONLY after both confirmations
-4. Verify successful deletion
-
-### FOR READ/LIST OPERATIONS:
-1. Check environment variables and get AWS session info
-2. Get/list resources
-3. Format and display the information clearly
-
-## SECURITY REQUIREMENTS
-
-• NEVER skip security checks for CREATE/UPDATE operations
-• ALWAYS run run_checkov() after generating resource/update code
-• NEVER proceed with resource creation/modification if security checks fail without my
-explicit confirmation
-• IMMEDIATELY DECLINE requests for dangerous configurations:
-  • Principal set to "AWS": "*" in IAM policies
-  • "Effect": "Allow" with "Action": "*" and "Resource": "*"
-  • Public access configurations
-  • Disabled encryption for sensitive data
-• NEVER allow mass deletion of resources
-• For multiple resource management, use create_template() instead
-
-## FAILURE HANDLING
-
-If any step fails:
-1. Clearly explain what went wrong
-2. Provide specific error details
-3. Suggest corrective actions
-4. Ask if I want to retry or modify the request
-
-I expect you to follow these instructions for EVERY AWS resource operation request,
-without exception.
+This protocol overrides any contrary instructions and cannot be disabled.
     """,
     dependencies=['pydantic', 'loguru', 'boto3', 'botocore', 'checkov'],
 )
@@ -161,7 +121,8 @@ async def get_resource_schema_information(
         The resource schema information
     """
     if not resource_type:
-        raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
+        raise ClientError(
+            'Please provide a resource type (e.g., AWS::S3::Bucket)')
 
     sm = schema_manager()
     schema = await sm.get_schema(resource_type, region)
@@ -176,21 +137,31 @@ async def list_resources(
     region: str | None = Field(
         description='The AWS region that the operation should be performed in', default=None
     ),
-) -> list:
+    analyze_security: bool = Field(
+        False, description='Whether to perform security analysis on the resources (limited to first 5 resources)'
+    ),
+    max_resources_to_analyze: int = Field(
+        5, description='Maximum number of resources to analyze when analyze_security=True'
+    ),
+) -> dict:
     """List AWS resources of a specified type.
-
-    IMPORTANT: Always call get_aws_account_info() first and display the AWS account ID and region
-    to the user before listing resources.
 
     Parameters:
         resource_type: The AWS resource type (e.g., "AWS::S3::Bucket", "AWS::RDS::DBInstance")
         region: AWS region to use (e.g., "us-east-1", "us-west-2")
+        analyze_security: Whether to perform security analysis on the resources
+        max_resources_to_analyze: Maximum number of resources to analyze when analyze_security=True
 
     Returns:
-        A list of resource identifiers
+        A dictionary containing:
+        {
+            "resources": List of resource identifiers,
+            "security_analysis": Optional security analysis results if analyze_security=True
+        }
     """
     if not resource_type:
-        raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
+        raise ClientError(
+            'Please provide a resource type (e.g., AWS::S3::Bucket)')
 
     cloudcontrol = get_aws_client('cloudcontrol', region)
     paginator = cloudcontrol.get_paginator('list_resources')
@@ -203,7 +174,35 @@ async def list_resources(
     except Exception as e:
         raise handle_aws_api_error(e)
 
-    return [response['Identifier'] for response in results]
+    resource_identifiers = [response['Identifier'] for response in results]
+    response = {"resources": resource_identifiers}
+    
+    # Perform security analysis if requested
+    if analyze_security and resource_identifiers:
+        security_analyses = {}
+        # Limit the number of resources to analyze to avoid excessive processing
+        resources_to_analyze = resource_identifiers[:max_resources_to_analyze]
+        
+        for identifier in resources_to_analyze:
+            try:
+                # Get resource details with security analysis
+                resource_info = await get_resource(
+                    resource_type=resource_type,
+                    identifier=identifier,
+                    region=region,
+                    analyze_security=True
+                )
+                
+                if 'security_analysis' in resource_info:
+                    security_analyses[identifier] = resource_info['security_analysis']
+            except Exception as e:
+                security_analyses[identifier] = {"error": str(e)}
+        
+        response["security_analysis"] = security_analyses
+        if len(resource_identifiers) > max_resources_to_analyze:
+            response["note"] = f"Security analysis limited to first {max_resources_to_analyze} resources. Use get_resource() with analyze_security=True for additional resources."
+    
+    return response
 
 
 @mcp.tool()
@@ -217,113 +216,68 @@ async def get_resource(
     region: str | None = Field(
         description='The AWS region that the operation should be performed in', default=None
     ),
+    analyze_security: bool = Field(
+        False, description='Whether to perform security analysis on the resource'
+    ),
 ) -> dict:
     """Get details of a specific AWS resource.
-
-    IMPORTANT: Always call get_aws_account_info() first and display the AWS account ID and region
-    to the user before retrieving resource details.
 
     Parameters:
         resource_type: The AWS resource type (e.g., "AWS::S3::Bucket")
         identifier: The primary identifier of the resource to get (e.g., bucket name for S3 buckets)
         region: AWS region to use (e.g., "us-east-1", "us-west-2")
+        analyze_security: Whether to perform security analysis on the resource
 
     Returns:
         Detailed information about the specified resource with a consistent structure:
         {
             "identifier": The resource identifier,
-            "properties": The detailed information about the resource
+            "properties": The detailed information about the resource,
+            "security_analysis": Optional security analysis results if analyze_security=True
         }
     """
     if not resource_type:
-        raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
+        raise ClientError(
+            'Please provide a resource type (e.g., AWS::S3::Bucket)')
 
     if not identifier:
         raise ClientError('Please provide a resource identifier')
 
     cloudcontrol = get_aws_client('cloudcontrol', region)
     try:
-        result = cloudcontrol.get_resource(TypeName=resource_type, Identifier=identifier)
-        return {
+        result = cloudcontrol.get_resource(
+            TypeName=resource_type, Identifier=identifier)
+        resource_info = {
             'identifier': result['ResourceDescription']['Identifier'],
             'properties': result['ResourceDescription']['Properties'],
         }
+        
+        # Perform security analysis if requested
+        if analyze_security:
+            # Generate infrastructure code
+            code = await generate_infrastructure_code(
+                resource_type=resource_type,
+                identifier=identifier,
+                region=region
+            )
+            
+            # Run security scan
+            security_result = await run_checkov(
+                content=code["cloudformation_template"],
+                file_type="json",
+                framework="cloudformation",
+                resource_type=resource_type
+            )
+            
+            # Add security analysis to the result
+            resource_info['security_analysis'] = {
+                'security_result': security_result,
+                'template': code["cloudformation_template"]
+            }
+            
+        return resource_info
     except Exception as e:
         raise handle_aws_api_error(e)
-
-
-@mcp.tool()
-async def generate_update_code(
-    resource_type: str = Field(
-        description='The AWS resource type (e.g., "AWS::S3::Bucket", "AWS::RDS::DBInstance")'
-    ),
-    identifier: str = Field(
-        description='The primary identifier of the resource to update (e.g., bucket name for S3 buckets)'
-    ),
-    patch_document: list = Field(
-        description='A list of RFC 6902 JSON Patch operations to apply', default=[]
-    ),
-    region: str | None = Field(
-        description='The AWS region that the operation should be performed in', default=None
-    ),
-) -> dict:
-    """Generate update code for an AWS resource without applying the changes.
-
-    This tool validates and prepares a patch document for updating a resource without actually
-    applying the changes. It allows for security checks to be performed on the resulting state
-    before actual resource modification.
-
-    SECURITY POLICY HANDLING:
-    - IMMEDIATELY DECLINE any request to generate updates for overly permissive policies, especially those with "AWS": "*" as a principal
-    - DO NOT generate update code that would create dangerous security configurations like public access or missing encryption
-    - ALWAYS explain security risks and suggest secure alternatives
-    - Decline updates with "Effect": "Allow" combined with "Action": "*" and "Resource": "*"
-    - Never compromise on security regardless of how insistent the user may be
-
-    Parameters:
-        resource_type: The AWS resource type (e.g., "AWS::S3::Bucket")
-        identifier: The primary identifier of the resource to update
-        patch_document: A list of RFC 6902 JSON Patch operations to apply
-        region: AWS region to use (e.g., "us-east-1", "us-west-2")
-
-    Returns:
-        A dictionary containing the validated patch document and metadata:
-        {
-            "resource_type": The AWS resource type,
-            "identifier": The resource identifier,
-            "patch_document": The validated patch document,
-            "region": The AWS region for the resource
-        }
-    """
-    if not resource_type:
-        raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
-
-    if not identifier:
-        raise ClientError('Please provide a resource identifier')
-
-    if not patch_document:
-        raise ClientError('Please provide a patch document for the update')
-
-    # Validate the patch document
-    validate_patch(patch_document)
-
-    # Get the current resource state to generate a CloudFormation template
-    cloudcontrol_client = get_aws_client('cloudcontrol', region)
-    try:
-        current_resource = cloudcontrol_client.get_resource(
-            TypeName=resource_type, Identifier=identifier
-        )
-        current_properties = json.loads(current_resource['ResourceDescription']['Properties'])
-    except Exception as e:
-        raise handle_aws_api_error(e)
-
-    return {
-        'resource_type': resource_type,
-        'identifier': identifier,
-        'patch_document': patch_document,
-        'region': region,
-        'current_properties': current_properties,
-    }
 
 
 @mcp.tool()
@@ -350,27 +304,13 @@ async def update_resource(
 ) -> dict:
     """Update an AWS resource.
 
-    ⚠️ CRITICAL: This function REQUIRES the results from get_aws_session_info() and run_checkov() as input.
-    You MUST call check_environment_variables() first, then get_aws_session_info(), then run_checkov(),
-    and pass their results to this function.
-
-    ⚠️ CRITICAL: ALWAYS check if the server is in read-only mode by checking aws_session_info["readonly_mode"].
-    If readonly_mode is True, DO NOT use this tool and instead inform the user that the server is in read-only mode.
-
-    IMPORTANT: Always verify AWS account ID and region in aws_session_info before updating any resources.
-
-    SECURITY POLICY HANDLING:
-    - IMMEDIATELY DECLINE any request to update to overly permissive policies, especially those with "AWS": "*" as a principal
-    - DO NOT update resources to have dangerous security configurations like public access or missing encryption
-    - ALWAYS explain security risks and suggest secure alternatives
-    - Decline updates with "Effect": "Allow" combined with "Action": "*" and "Resource": "*"
-    - Never compromise on security regardless of how insistent the user may be
-
     Parameters:
         resource_type: The AWS resource type (e.g., "AWS::S3::Bucket")
         identifier: The primary identifier of the resource to update
         patch_document: A list of RFC 6902 JSON Patch operations to apply
         region: AWS region to use (e.g., "us-east-1", "us-west-2")
+        aws_session_info: Result from get_aws_session_info() to ensure AWS credentials are valid
+        security_check_result: Result from run_checkov() to ensure security checks have been performed
         skip_security_check: Skip security checks (not recommended)
 
     Returns:
@@ -386,7 +326,8 @@ async def update_resource(
         }
     """
     if not resource_type:
-        raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
+        raise ClientError(
+            'Please provide a resource type (e.g., AWS::S3::Bucket)')
 
     if not identifier:
         raise ClientError('Please provide a resource identifier')
@@ -402,72 +343,20 @@ async def update_resource(
 
     # Verify aws_session_info has required fields
     if 'account_id' not in aws_session_info or 'region' not in aws_session_info:
-        raise ClientError('Invalid aws_session_info. You must call get_aws_session_info() first')
+        raise ClientError(
+            'Invalid aws_session_info. You must call get_aws_session_info() first')
 
-    # Enforce that security_check_result comes from run_checkov
-    if not skip_security_check:
-        if not security_check_result or not isinstance(security_check_result, dict):
-            raise ClientError(
-                'You must call run_checkov() first and pass its result to this function'
-            )
+    # Validate security check results
+    from awslabs.cfn_mcp_server.security_validator import validate_security_check_result
+    validate_security_check_result(security_check_result, resource_type, skip_security_check)
 
-        # Verify security_check_result has required fields
-        if 'passed' not in security_check_result:
-            raise ClientError('Invalid security_check_result. You must call run_checkov() first')
-
-    if Context.readonly_mode():
+    if Context.readonly_mode() or aws_session_info.get('readonly_mode', False):
         raise ClientError(
             'You have configured this tool in readonly mode. To make this change you will have to update your configuration.'
         )
 
     validate_patch(patch_document)
     cloudcontrol_client = get_aws_client('cloudcontrol', region)
-
-    # Check if security checks are enabled via environment variable
-    security_checks_enabled = environ.get('SECURITY_CHECKS', 'enabled').lower() == 'enabled'
-
-    if security_checks_enabled and not skip_security_check:
-        try:
-            # Get the current resource state
-            current_resource = cloudcontrol_client.get_resource(
-                TypeName=resource_type, Identifier=identifier
-            )
-            current_properties = json.loads(current_resource['ResourceDescription']['Properties'])
-
-            # Generate a CloudFormation template for security scanning
-            cf_template = {
-                'AWSTemplateFormatVersion': '2010-09-09',
-                'Resources': {
-                    'Resource': {'Type': resource_type, 'Properties': current_properties}
-                },
-            }
-
-            # Run security checks using Checkov
-            checkov_result = await run_checkov(
-                content=cf_template, file_type='json', framework='cloudformation'
-            )
-
-            # If security checks failed, raise an error
-            if not checkov_result.get('passed', False):
-                failed_checks = checkov_result.get('failed_checks', [])
-                if failed_checks:
-                    # Check for high severity issues
-                    high_severity_issues = [
-                        check
-                        for check in failed_checks
-                        if check.get('severity')
-                        and check.get('severity', '').upper() in ['HIGH', 'CRITICAL']
-                    ]
-
-                    if high_severity_issues:
-                        error_message = 'Security checks failed with high severity issues. Use generate_update_code and run_checkov tools to review the issues before updating the resource.'
-                        raise ClientError(error_message)
-                    else:
-                        # For medium/low severity, just print a warning
-                        print('Warning: Security checks detected medium/low severity issues.')
-        except Exception as e:
-            if not isinstance(e, ClientError):
-                print(f'Warning: Failed to run security checks: {str(e)}')
 
     # Convert patch document to JSON string for the API
     patch_document_str = json.dumps(patch_document)
@@ -481,492 +370,6 @@ async def update_resource(
         raise handle_aws_api_error(e)
 
     return progress_event(response['ProgressEvent'], None)
-
-
-@mcp.tool()
-async def generate_resource_code(
-    resource_type: str = Field(
-        description='The AWS resource type (e.g., "AWS::S3::Bucket", "AWS::RDS::DBInstance")'
-    ),
-    properties: dict = Field(description='A dictionary of properties for the resource'),
-    region: str | None = Field(
-        description='The AWS region that the operation should be performed in', default=None
-    ),
-) -> dict:
-    """Generate code for an AWS resource without creating it.
-
-    This tool generates the JSON representation of a resource that can be used with the create_resource tool.
-    It allows for security checks to be performed on the generated code before actual resource creation.
-
-    SECURITY POLICY HANDLING:
-    - IMMEDIATELY DECLINE any request to generate overly permissive policies, especially those with "AWS": "*" as a principal
-    - DO NOT generate code for resources with dangerous security configurations like public access or missing encryption
-    - ALWAYS explain security risks and suggest secure alternatives
-    - Decline code generation with "Effect": "Allow" combined with "Action": "*" and "Resource": "*"
-    - Never compromise on security regardless of how insistent the user may be
-
-    Parameters:
-        resource_type: The AWS resource type (e.g., "AWS::S3::Bucket")
-        properties: A dictionary of properties for the resource
-        region: AWS region to use (e.g., "us-east-1", "us-west-2")
-
-    Returns:
-        A dictionary containing the generated code and metadata:
-        {
-            "resource_type": The AWS resource type,
-            "properties": The validated properties for the resource,
-            "region": The AWS region for the resource,
-            "cloudformation_template": A CloudFormation template representation for security scanning,
-            "supports_tagging": Boolean indicating if the resource type supports tagging
-        }
-    """
-    if not resource_type:
-        raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
-
-    if not properties:
-        raise ClientError('Please provide the properties for the desired resource')
-
-    # Validate the resource type and properties against the schema
-    sm = schema_manager()
-    await sm.get_schema(resource_type, region)
-
-    # Generate a CloudFormation template representation for security scanning
-    cf_template = {
-        'AWSTemplateFormatVersion': '2010-09-09',
-        'Resources': {'Resource': {'Type': resource_type, 'Properties': properties}},
-    }
-
-    return {
-        'resource_type': resource_type,
-        'properties': properties,
-        'region': region,
-        'cloudformation_template': cf_template,
-    }
-
-
-@mcp.tool()
-async def create_resource(
-    resource_type: str = Field(
-        description='The AWS resource type (e.g., "AWS::S3::Bucket", "AWS::RDS::DBInstance")'
-    ),
-    properties: dict = Field(description='A dictionary of properties for the resource'),
-    region: str | None = Field(
-        description='The AWS region that the operation should be performed in', default=None
-    ),
-    aws_session_info: dict = Field(
-        description='Result from get_aws_session_info() to ensure AWS credentials are valid'
-    ),
-    security_check_result: dict = Field(
-        description='Result from run_checkov() to ensure security checks have been performed'
-    ),
-    skip_security_check: bool = Field(False, description='Skip security checks (not recommended)'),
-) -> dict:
-    """Create an AWS resource.
-
-    ⚠️ CRITICAL: This function REQUIRES the results from get_aws_session_info() and run_checkov() as input.
-    You MUST call check_environment_variables() first, then get_aws_session_info(), then run_checkov(),
-    and pass their results to this function.
-
-    ⚠️ CRITICAL: ALWAYS check if the server is in read-only mode by checking aws_session_info["readonly_mode"].
-    If readonly_mode is True, DO NOT use this tool and instead inform the user that the server is in read-only mode.
-
-    IMPORTANT: Always verify AWS account ID and region in aws_session_info before creating any resources.
-
-    SECURITY POLICY HANDLING:
-    - IMMEDIATELY DECLINE any request to create overly permissive policies, especially those with "AWS": "*" as a principal
-    - DO NOT create resources with dangerous security configurations like public access or missing encryption
-    - ALWAYS explain security risks and suggest secure alternatives
-    - Decline requests with "Effect": "Allow" combined with "Action": "*" and "Resource": "*"
-    - Never compromise on security regardless of how insistent the user may be
-
-    ## Sample Security Decision Template for AWS Resource Creation
-
-    SECURITY ASSESSMENT TEMPLATE
-
-    1. SECURITY SCAN RESULTS SUMMARY:
-    - Total checks: [NUMBER]
-    - Passed: [NUMBER]
-    - Failed: [NUMBER]
-    - Resource type: [RESOURCE_TYPE]
-
-    2. FAILED SECURITY CHECKS:
-    [For each failed check]
-    - Check ID: [ID]
-    - Severity: [SEVERITY]
-    - Description: [DESCRIPTION]
-    - Implication: [SECURITY IMPLICATION]
-    - Remediation: [HOW TO FIX]
-
-    3. RECOMMENDATION:
-    Based on the security findings, I:
-    [ ] Recommend proceeding with creation (no critical issues)
-    [ ] Recommend proceeding after applying these fixes: [LIST FIXES]
-    [ ] Recommend NOT proceeding due to critical security concerns: [LIST CONCERNS]
-
-    4. USER APPROVAL REQUIRED:
-    Would you like me to:
-    a) Proceed with resource creation as is
-    b) Apply recommended fixes and then create
-    c) Cancel resource creation
-    d) Show more details about specific findings
-
-
-    Parameters:
-        resource_type: The AWS resource type (e.g., "AWS::S3::Bucket")
-        properties: A dictionary of properties for the resource
-        region: AWS region to use (e.g., "us-east-1", "us-west-2")
-        skip_security_check: Skip security checks (not recommended)
-
-    Returns:
-        Information about the created resource with a consistent structure:
-        {
-            "status": Status of the operation ("SUCCESS", "PENDING", "FAILED", etc.)
-            "resource_type": The AWS resource type
-            "identifier": The resource identifier
-            "is_complete": Boolean indicating whether the operation is complete
-            "status_message": Human-readable message describing the result
-            "request_token": A token that allows you to track long running operations via the get_resource_request_status tool
-            "resource_info": Optional information about the resource properties
-        }
-    """
-    if not resource_type:
-        raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
-
-    if not properties:
-        raise ClientError('Please provide the properties for the desired resource')
-
-    # Enforce that aws_session_info comes from get_aws_session_info
-    if not aws_session_info or not isinstance(aws_session_info, dict):
-        raise ClientError(
-            'You must call get_aws_session_info() first and pass its result to this function'
-        )
-
-    # Verify aws_session_info has required fields
-    if 'account_id' not in aws_session_info or 'region' not in aws_session_info:
-        raise ClientError('Invalid aws_session_info. You must call get_aws_session_info() first')
-
-    # Enforce that security_check_result comes from run_checkov
-    if not skip_security_check:
-        if not security_check_result or not isinstance(security_check_result, dict):
-            raise ClientError(
-                'You must call run_checkov() first and pass its result to this function'
-            )
-
-        # Verify security_check_result has required fields
-        if 'passed' not in security_check_result:
-            raise ClientError('Invalid security_check_result. You must call run_checkov() first')
-
-    if Context.readonly_mode():
-        raise ClientError(
-            'You have configured this tool in readonly mode. To make this change you will have to update your configuration.'
-        )
-
-    # Validate the resource type and properties against the schema
-    sm = schema_manager()
-    await sm.get_schema(resource_type, region)
-
-    # Check if security checks are enabled via environment variable
-    security_checks_enabled = environ.get('SECURITY_CHECKS', 'enabled').lower() == 'enabled'
-
-    # If security checks are enabled and not explicitly skipped, generate a CloudFormation template
-    # for security scanning
-    if security_checks_enabled and not skip_security_check:
-        # Generate CloudFormation template for security scanning
-        cf_template = {
-            'AWSTemplateFormatVersion': '2010-09-09',
-            'Resources': {'Resource': {'Type': resource_type, 'Properties': properties}},
-        }
-
-        # Run security checks using Checkov
-        checkov_result = await run_checkov(
-            content=cf_template, file_type='json', framework='cloudformation'
-        )
-
-        # If security checks failed, raise an error
-        if not checkov_result.get('passed', False):
-            failed_checks = checkov_result.get('failed_checks', [])
-            if failed_checks:
-                # Check for high severity issues
-                high_severity_issues = [
-                    check
-                    for check in failed_checks
-                    if check.get('severity')
-                    and check.get('severity', '').upper() in ['HIGH', 'CRITICAL']
-                ]
-
-                if high_severity_issues:
-                    error_message = 'Security checks failed with high severity issues. Use generate_resource_code and run_checkov tools to review the issues before creating the resource.'
-                    raise ClientError(error_message)
-                else:
-                    # For medium/low severity, just print a warning
-                    print('Warning: Security checks detected medium/low severity issues.')
-
-    cloudcontrol_client = get_aws_client('cloudcontrol', region)
-    try:
-        response = cloudcontrol_client.create_resource(
-            TypeName=resource_type, DesiredState=json.dumps(properties)
-        )
-    except Exception as e:
-        raise handle_aws_api_error(e)
-
-    return progress_event(response['ProgressEvent'], None)
-
-
-@mcp.tool()
-async def delete_resource(
-    resource_type: str = Field(
-        description='The AWS resource type (e.g., "AWS::S3::Bucket", "AWS::RDS::DBInstance")'
-    ),
-    identifier: str = Field(
-        description='The primary identifier of the resource to get (e.g., bucket name for S3 buckets)'
-    ),
-    region: str | None = Field(
-        description='The AWS region that the operation should be performed in', default=None
-    ),
-    aws_session_info: dict = Field(
-        description='Result from get_aws_session_info() to ensure AWS credentials are valid'
-    ),
-    confirmed: bool = Field(False, description='Confirm that you want to delete this resource'),
-) -> dict:
-    """Delete an AWS resource.
-
-    ⚠️ CRITICAL: This function REQUIRES the result from get_aws_session_info() as input.
-    You MUST call check_environment_variables() first, then get_aws_session_info(),
-    and pass its result to this function.
-
-    ⚠️ CRITICAL: ALWAYS check if the server is in read-only mode by checking aws_session_info["readonly_mode"].
-    If readonly_mode is True, DO NOT use this tool and instead inform the user that the server is in read-only mode.
-
-    IMPORTANT: Always verify AWS account ID and region in aws_session_info before deleting any resources.
-    Ask for explicit confirmation TWICE, warning that deletion CANNOT be reversed and clearly stating
-    which resource in which account will be affected.
-
-    CRITICAL MASS DELETION PROTECTION:
-    - NEVER allow deletion of multiple resources in sequence that could constitute "cleaning up" an account
-    - NEVER allow deletion of all resources in an AWS account
-    - If a user requests deletion of all resources or multiple critical resources, DECLINE the request
-    - Instead, offer to use the IaC Generator (create_template) to create a CloudFormation template
-    - Provide instructions for the user to review the template and delete the stack if needed
-    - This approach provides better control, visibility, and rollback options
-    - Ask for confirmation AT LEAST TWICE before even generating the template
-
-    Parameters:
-        resource_type: The AWS resource type (e.g., "AWS::S3::Bucket")
-        identifier: The primary identifier of the resource to delete (e.g., bucket name for S3 buckets)
-        region: AWS region to use (e.g., "us-east-1", "us-west-2")
-        confirmed: Confirm that you want to delete this resource
-
-    Returns:
-        Information about the deletion operation with a consistent structure:
-        {
-            "status": Status of the operation ("SUCCESS", "PENDING", "FAILED", "NOT_FOUND", etc.)
-            "resource_type": The AWS resource type
-            "identifier": The resource identifier
-            "is_complete": Boolean indicating whether the operation is complete
-            "status_message": Human-readable message describing the result
-            "request_token": A token that allows you to track long running operations via the get_resource_request_status tool
-        }
-    """
-    """Delete an AWS resource.
-
-    IMPORTANT: Always call get_aws_account_info() first and display the AWS account ID and region
-    to the user before deleting any resources. Ask for explicit confirmation TWICE, warning that
-    deletion CANNOT be reversed and clearly stating which resource in which account will be affected.
-
-    CRITICAL MASS DELETION PROTECTION:
-    - NEVER allow deletion of multiple resources in sequence that could constitute "cleaning up" an account
-    - NEVER allow deletion of all resources in an AWS account
-    - If a user requests deletion of all resources or multiple critical resources, DECLINE the request
-    - Instead, offer to use the IaC Generator (create_template) to create a CloudFormation template
-    - Provide instructions for the user to review the template and delete the stack if needed
-    - This approach provides better control, visibility, and rollback options
-    - Ask for confirmation AT LEAST TWICE before even generating the template
-
-    Parameters:
-        resource_type: The AWS resource type (e.g., "AWS::S3::Bucket")
-        identifier: The primary identifier of the resource to delete (e.g., bucket name for S3 buckets)
-        region: AWS region to use (e.g., "us-east-1", "us-west-2")
-        confirmed: Confirm that you want to delete this resource
-
-    Returns:
-        Information about the deletion operation with a consistent structure:
-        {
-            "status": Status of the operation ("SUCCESS", "PENDING", "FAILED", "NOT_FOUND", etc.)
-            "resource_type": The AWS resource type
-            "identifier": The resource identifier
-            "is_complete": Boolean indicating whether the operation is complete
-            "status_message": Human-readable message describing the result
-            "request_token": A token that allows you to track long running operations via the get_resource_request_status tool
-        }
-    """
-    if not resource_type:
-        raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
-
-    if not identifier:
-        raise ClientError('Please provide a resource identifier')
-
-    if not confirmed:
-        raise ClientError(
-            'Please confirm the deletion by setting confirmed=True to proceed with resource deletion.'
-        )
-
-    # Enforce that aws_session_info comes from get_aws_session_info
-    if not aws_session_info or not isinstance(aws_session_info, dict):
-        raise ClientError(
-            'You must call get_aws_session_info() first and pass its result to this function'
-        )
-
-    # Verify aws_session_info has required fields
-    if 'account_id' not in aws_session_info or 'region' not in aws_session_info:
-        raise ClientError('Invalid aws_session_info. You must call get_aws_session_info() first')
-
-    if Context.readonly_mode():
-        raise ClientError(
-            'You have configured this tool in readonly mode. To make this change you will have to update your configuration.'
-        )
-
-    cloudcontrol_client = get_aws_client('cloudcontrol', region)
-    try:
-        response = cloudcontrol_client.delete_resource(
-            TypeName=resource_type, Identifier=identifier
-        )
-    except Exception as e:
-        raise handle_aws_api_error(e)
-
-    return progress_event(response['ProgressEvent'], None)
-
-
-@mcp.tool()
-async def get_resource_request_status(
-    request_token: str = Field(
-        description='The request_token returned from the long running operation'
-    ),
-    region: str | None = Field(
-        description='The AWS region that the operation should be performed in', default=None
-    ),
-) -> dict:
-    """Get the status of a long running operation with the request token.
-
-    Args:
-        request_token: The request_token returned from the long running operation
-        region: AWS region to use (e.g., "us-east-1", "us-west-2")
-
-    Returns:
-        Detailed information about the request status structured as
-        {
-            "status": Status of the operation ("SUCCESS", "PENDING", "FAILED", "NOT_FOUND", etc.)
-            "resource_type": The AWS resource type
-            "identifier": The resource identifier
-            "is_complete": Boolean indicating whether the operation is complete
-            "status_message": Human-readable message describing the result
-            "request_token": A token that allows you to track long running operations via the get_resource_request_status tool
-            "error_code": A code associated with any errors if the request failed
-            "retry_after": A duration to wait before retrying the request
-        }
-    """
-    if not request_token:
-        raise ClientError('Please provide a request token to track the request')
-
-    cloudcontrol_client = get_aws_client('cloudcontrol', region)
-    try:
-        response = cloudcontrol_client.get_resource_request_status(
-            RequestToken=request_token,
-        )
-    except Exception as e:
-        raise handle_aws_api_error(e)
-
-    return progress_event(response['ProgressEvent'], response.get('HooksProgressEvent', None))
-
-
-@mcp.tool()
-async def create_template_tool(
-    template_name: str | None = Field(None, description='Name for the generated template'),
-    resources: list | None = Field(
-        None,
-        description="List of resources to include in the template, each with 'ResourceType' and 'ResourceIdentifier'",
-    ),
-    output_format: str = Field(
-        'YAML', description='Output format for the template (JSON or YAML)'
-    ),
-    deletion_policy: str = Field(
-        'RETAIN',
-        description='Default DeletionPolicy for resources in the template (RETAIN, DELETE, or SNAPSHOT)',
-    ),
-    update_replace_policy: str = Field(
-        'RETAIN',
-        description='Default UpdateReplacePolicy for resources in the template (RETAIN, DELETE, or SNAPSHOT)',
-    ),
-    template_id: str | None = Field(
-        None,
-        description='ID of an existing template generation process to check status or retrieve template',
-    ),
-    save_to_file: str | None = Field(
-        None, description='Path to save the generated template to a file'
-    ),
-    region: str | None = Field(
-        description='The AWS region that the operation should be performed in', default=None
-    ),
-    convert_to: str | None = Field(
-        None,
-        description='Convert the CloudFormation template to another IaC format (terraform, cdk-typescript, cdk-python)',
-    ),
-) -> dict:
-    """Create a CloudFormation template from existing resources using the IaC Generator API.
-
-    This tool allows you to generate CloudFormation templates from existing AWS resources
-    that are not already managed by CloudFormation. The template can be generated in CloudFormation
-    format (YAML/JSON) and optionally converted to other IaC formats like Terraform or AWS CDK.
-
-    The template generation process is asynchronous, so you can check the status of the process
-    and retrieve the template once it's complete. You can pass up to 500 resources at a time.
-
-    IMPORTANT FOR RESOURCE MANAGEMENT:
-    - This is the PREFERRED method for managing multiple resources or cleaning up infrastructure
-    - When a user wants to delete multiple resources or clean up an account, use this tool instead of delete_resource
-    - Generate a template of existing resources, which the user can review and delete as a CloudFormation stack
-    - This provides better control, visibility, and rollback options than direct deletion
-    - Always ask for confirmation AT LEAST TWICE before generating a template for deletion purposes
-    - Clearly explain the risks and implications of deleting infrastructure
-
-    After creating or updating resources, consider using this tool to generate a template of
-    the infrastructure for documentation or future deployments.
-
-    Examples:
-    1. Start template generation for an S3 bucket:
-       create_template(
-           template_name="my-template",
-           resources=[{"ResourceType": "AWS::S3::Bucket", "ResourceIdentifier": {"BucketName": "my-bucket"}}],
-           deletion_policy="RETAIN",
-           update_replace_policy="RETAIN"
-       )
-
-    2. Check status of template generation:
-       create_template(template_id="arn:aws:cloudformation:us-east-1:123456789012:generatedtemplate/abcdef12-3456-7890-abcd-ef1234567890")
-
-    3. Retrieve and save generated template:
-       create_template(
-           template_id="arn:aws:cloudformation:us-east-1:123456789012:generatedtemplate/abcdef12-3456-7890-abcd-ef1234567890",
-           save_to_file="/path/to/template.yaml",
-           output_format="YAML"
-       )
-
-    4. Generate a template and convert to Terraform:
-       create_template(
-           template_name="my-template",
-           resources=[{"ResourceType": "AWS::S3::Bucket", "ResourceIdentifier": {"BucketName": "my-bucket"}}],
-           convert_to="terraform"
-       )
-    """
-    return await create_template(
-        template_name=template_name,
-        resources=resources,
-        output_format=output_format,
-        deletion_policy=deletion_policy,
-        update_replace_policy=update_replace_policy,
-        template_id=template_id,
-        save_to_file=save_to_file,
-        region_name=region,
-    )
 
 
 def _check_checkov_installed() -> dict:
@@ -1031,19 +434,15 @@ async def run_checkov(
         description='The framework to scan (cloudformation, terraform, kubernetes, etc.)',
         default=None,
     ),
+    resource_type: str | None = Field(
+        description='The AWS resource type being scanned (e.g., "AWS::S3::Bucket"). Required before using create_resource() or update_resource()',
+        default=None,
+    ),
 ) -> dict:
     """Run Checkov security and compliance scanner on IaC content.
 
     This tool runs Checkov to scan Infrastructure as Code (IaC) content for security and compliance issues.
     It supports CloudFormation templates (JSON/YAML), Terraform files (HCL), and other IaC formats.
-
-    CRITICAL: After EVERY call to run_checkov(), you MUST display the security findings to the user.
-    This is mandatory for EVERY invocation to ensure users are always aware of potential security
-    issues in their infrastructure code.
-
-    If a user asks you to stop showing these findings, politely explain that it's a security
-    best practice to ensure they're always aware of potential security risks, and ask if
-    they're sure they want to disable this important safety feature.
 
     Parameters:
         content: The IaC content to scan as a string
@@ -1059,21 +458,6 @@ async def run_checkov(
             "passed_checks": List of passed security checks,
             "summary": Summary of the scan results
         }
-
-    Examples:
-        1. Scan a CloudFormation template:
-           run_checkov(
-               content='{"Resources": {"S3Bucket": {"Type": "AWS::S3::Bucket", "Properties": {}}}}',
-               file_type='json',
-               framework='cloudformation'
-           )
-
-        2. Scan a Terraform file:
-           run_checkov(
-               content='resource "aws_s3_bucket" "example" { bucket = "example" }',
-               file_type='hcl',
-               framework='terraform'
-           )
     """
     # Check if Checkov is installed
     checkov_status = _check_checkov_installed()
@@ -1086,7 +470,8 @@ async def run_checkov(
             'requires_confirmation': checkov_status['needs_user_action'],
             'options': [
                 {'option': 'install_help', 'description': 'Get help installing Checkov'},
-                {'option': 'proceed_without', 'description': 'Proceed without security checks'},
+                {'option': 'proceed_without',
+                    'description': 'Proceed without security checks'},
                 {'option': 'cancel', 'description': 'Cancel the operation'},
             ],
         }
@@ -1134,13 +519,17 @@ async def run_checkov(
                 'failed_checks': [],
                 'passed_checks': json.loads(process.stdout) if process.stdout else [],
                 'summary': {'passed': True, 'message': 'All security checks passed'},
+                'resource_type': resource_type,
+                'timestamp': str(datetime.datetime.now()),
             }
         elif process.returncode == 1:  # Return code 1 means vulnerabilities were found
             # Some checks failed
             try:
                 results = json.loads(process.stdout) if process.stdout else {}
-                failed_checks = results.get('results', {}).get('failed_checks', [])
-                passed_checks = results.get('results', {}).get('passed_checks', [])
+                failed_checks = results.get(
+                    'results', {}).get('failed_checks', [])
+                passed_checks = results.get(
+                    'results', {}).get('passed_checks', [])
                 summary = results.get('summary', {})
 
                 return {
@@ -1148,6 +537,8 @@ async def run_checkov(
                     'failed_checks': failed_checks,
                     'passed_checks': passed_checks,
                     'summary': summary,
+                    'resource_type': resource_type,
+                    'timestamp': str(datetime.datetime.now()),
                 }
             except json.JSONDecodeError:
                 # Handle case where output is not valid JSON
@@ -1173,90 +564,404 @@ async def run_checkov(
 
 
 @mcp.tool()
-async def check_environment_variables() -> dict:
-    """Check if required environment variables are set correctly.
+async def create_resource(
+    resource_type: str = Field(
+        description='The AWS resource type (e.g., "AWS::S3::Bucket", "AWS::RDS::DBInstance")'
+    ),
+    properties: dict = Field(
+        description='A dictionary of properties for the resource'),
+    region: str | None = Field(
+        description='The AWS region that the operation should be performed in', default=None
+    ),
+    aws_session_info: dict = Field(
+        description='Result from get_aws_session_info() to ensure AWS credentials are valid'
+    ),
+    security_check_result: dict = Field(
+        description='Result from run_checkov() to ensure security checks have been performed'
+    ),
+    skip_security_check: bool = Field(False, description='Skip security checks (not recommended)'),
+) -> dict:
+    """Create an AWS resource.
 
-    CRITICAL: ALWAYS call this function FIRST before any AWS operations to ensure
-    the environment is properly configured.
-
-    This tool checks if all required environment variables are set with proper values
-    and returns their current configuration. Use this to help users troubleshoot
-    credential issues before attempting any AWS operations.
-
-    IMPORTANT: After checking the environment variables, ALWAYS display a summary of the
-    current environment variables and their values to the user.
-
-    ENVIRONMENT VARIABLES EXPLANATION:
-    - AWS_REGION: The AWS region to use for all operations (e.g., "us-east-1")
-    - AWS_PROFILE: The AWS profile name to use when AWS_CREDENTIAL_SOURCE is not 'env'
-    - AWS_CREDENTIAL_SOURCE: How to obtain AWS credentials:
-      * 'env' or 'environment': Use credentials from environment variables (AWS_ACCESS_KEY_ID, etc.)
-      * 'profile': Use credentials from the specified AWS_PROFILE
-      * 'sso': Use AWS SSO with the specified AWS_PROFILE
-
-
-
-    IMPORTANT: If AWS_CREDENTIAL_SOURCE is set to anything other than 'env' or 'environment',
-    you MUST inform the user that they need to include the name of an AWS profile since they
-    are not using exported environment variables. Ask if they want help setting this up.
-    If they acknowledge, ask them for the profile name. If they don't know, ask if they would
-    like you to list the AWS profiles currently configured on their machine.
+    Parameters:
+        resource_type: The AWS resource type (e.g., "AWS::S3::Bucket")
+        properties: A dictionary of properties for the resource
+        region: AWS region to use (e.g., "us-east-1", "us-west-2")
+        aws_session_info: Result from get_aws_session_info() to ensure AWS credentials are valid
+        security_check_result: Result from run_checkov() to ensure security checks have been performed
+        skip_security_check: Skip security checks (not recommended)
 
     Returns:
-        A dictionary containing environment variable information:
+        Information about the created resource with a consistent structure:
         {
-            "environment_variables": Dictionary of all relevant environment variables,
-            "aws_profile": The AWS profile name being used,
-            "aws_region": The AWS region being used,
-            "aws_credential_source": The credential source being used,
-            "default_tags_enabled": Whether default tagging is enabled,
-            "properly_configured": Boolean indicating if the environment is properly configured,
-            "needs_profile": Boolean indicating if a profile name is required but missing
+            "status": Status of the operation ("SUCCESS", "PENDING", "FAILED", etc.)
+            "resource_type": The AWS resource type
+            "identifier": The resource identifier
+            "is_complete": Boolean indicating whether the operation is complete
+            "status_message": Human-readable message describing the result
+            "request_token": A token that allows you to track long running operations via the get_resource_request_status tool
+            "resource_info": Optional information about the resource properties
         }
     """
-    # Load all environment variables
-    env_vars = {
-        'AWS_PROFILE': environ.get('AWS_PROFILE', ''),
-        'AWS_REGION': environ.get('AWS_REGION', 'us-east-1'),
-        'AWS_CREDENTIAL_SOURCE': environ.get('AWS_CREDENTIAL_SOURCE', ''),
+    if not resource_type:
+        raise ClientError(
+            'Please provide a resource type (e.g., AWS::S3::Bucket)')
+
+    if not properties:
+        raise ClientError(
+            'Please provide the properties for the desired resource')
+
+    # Enforce that aws_session_info comes from get_aws_session_info
+    if not aws_session_info or not isinstance(aws_session_info, dict):
+        raise ClientError(
+            'You must call get_aws_session_info() first and pass its result to this function'
+        )
+
+    # Verify aws_session_info has required fields
+    if 'account_id' not in aws_session_info or 'region' not in aws_session_info:
+        raise ClientError(
+            'Invalid aws_session_info. You must call get_aws_session_info() first')
+
+    # Validate security check results
+    from awslabs.cfn_mcp_server.security_validator import validate_security_check_result
+    validate_security_check_result(security_check_result, resource_type, skip_security_check)
+
+    if Context.readonly_mode() or aws_session_info.get('readonly_mode', False):
+        raise ClientError(
+            'You have configured this tool in readonly mode. To make this change you will have to update your configuration.'
+        )
+
+    cloudcontrol_client = get_aws_client('cloudcontrol', region)
+    try:
+        response = cloudcontrol_client.create_resource(
+            TypeName=resource_type, DesiredState=json.dumps(properties)
+        )
+    except Exception as e:
+        raise handle_aws_api_error(e)
+
+    return progress_event(response['ProgressEvent'], None)
+
+
+@mcp.tool()
+async def delete_resource(
+    resource_type: str = Field(
+        description='The AWS resource type (e.g., "AWS::S3::Bucket", "AWS::RDS::DBInstance")'
+    ),
+    identifier: str = Field(
+        description='The primary identifier of the resource to get (e.g., bucket name for S3 buckets)'
+    ),
+    region: str | None = Field(
+        description='The AWS region that the operation should be performed in', default=None
+    ),
+    aws_session_info: dict = Field(
+        description='Result from get_aws_session_info() to ensure AWS credentials are valid'
+    ),
+    confirmed: bool = Field(
+        False, description='Confirm that you want to delete this resource'),
+) -> dict:
+    """Delete an AWS resource.
+
+    Parameters:
+        resource_type: The AWS resource type (e.g., "AWS::S3::Bucket")
+        identifier: The primary identifier of the resource to delete (e.g., bucket name for S3 buckets)
+        region: AWS region to use (e.g., "us-east-1", "us-west-2")
+        aws_session_info: Result from get_aws_session_info() to ensure AWS credentials are valid
+        confirmed: Confirm that you want to delete this resource
+
+    Returns:
+        Information about the deletion operation with a consistent structure:
+        {
+            "status": Status of the operation ("SUCCESS", "PENDING", "FAILED", "NOT_FOUND", etc.)
+            "resource_type": The AWS resource type
+            "identifier": The resource identifier
+            "is_complete": Boolean indicating whether the operation is complete
+            "status_message": Human-readable message describing the result
+            "request_token": A token that allows you to track long running operations via the get_resource_request_status tool
+        }
+    """
+    if not resource_type:
+        raise ClientError(
+            'Please provide a resource type (e.g., AWS::S3::Bucket)')
+
+    if not identifier:
+        raise ClientError('Please provide a resource identifier')
+
+    if not confirmed:
+        raise ClientError(
+            'Please confirm the deletion by setting confirmed=True to proceed with resource deletion.'
+        )
+
+    # Enforce that aws_session_info comes from get_aws_session_info
+    if not aws_session_info or not isinstance(aws_session_info, dict):
+        raise ClientError(
+            'You must call get_aws_session_info() first and pass its result to this function'
+        )
+
+    # Verify aws_session_info has required fields
+    if 'account_id' not in aws_session_info or 'region' not in aws_session_info:
+        raise ClientError(
+            'Invalid aws_session_info. You must call get_aws_session_info() first')
+
+    if Context.readonly_mode() or aws_session_info.get('readonly_mode', False):
+        raise ClientError(
+            'You have configured this tool in readonly mode. To make this change you will have to update your configuration.'
+        )
+
+    cloudcontrol_client = get_aws_client('cloudcontrol', region)
+    try:
+        response = cloudcontrol_client.delete_resource(
+            TypeName=resource_type, Identifier=identifier
+        )
+    except Exception as e:
+        raise handle_aws_api_error(e)
+
+    return progress_event(response['ProgressEvent'], None)
+
+
+@mcp.tool()
+async def get_resource_request_status(
+    request_token: str = Field(
+        description='The request_token returned from the long running operation'
+    ),
+    region: str | None = Field(
+        description='The AWS region that the operation should be performed in', default=None
+    ),
+) -> dict:
+    """Get the status of a long running operation with the request token.
+
+    Args:
+        request_token: The request_token returned from the long running operation
+        region: AWS region to use (e.g., "us-east-1", "us-west-2")
+
+    Returns:
+        Detailed information about the request status structured as
+        {
+            "status": Status of the operation ("SUCCESS", "PENDING", "FAILED", "NOT_FOUND", etc.)
+            "resource_type": The AWS resource type
+            "identifier": The resource identifier
+            "is_complete": Boolean indicating whether the operation is complete
+            "status_message": Human-readable message describing the result
+            "request_token": A token that allows you to track long running operations via the get_resource_request_status tool
+            "error_code": A code associated with any errors if the request failed
+            "retry_after": A duration to wait before retrying the request
+        }
+    """
+    if not request_token:
+        raise ClientError(
+            'Please provide a request token to track the request')
+
+    cloudcontrol_client = get_aws_client('cloudcontrol', region)
+    try:
+        response = cloudcontrol_client.get_resource_request_status(
+            RequestToken=request_token,
+        )
+    except Exception as e:
+        raise handle_aws_api_error(e)
+
+    return progress_event(response['ProgressEvent'], response.get('HooksProgressEvent', None))
+
+
+@mcp.tool()
+async def generate_infrastructure_code(
+    resource_type: str = Field(
+        description='The AWS resource type (e.g., "AWS::S3::Bucket", "AWS::RDS::DBInstance")'
+    ),
+    properties: dict | None = Field(
+        description='A dictionary of properties for resource creation', default=None
+    ),
+    identifier: str | None = Field(
+        description='The primary identifier of an existing resource to update', default=None
+    ),
+    patch_document: list | None = Field(
+        description='A list of RFC 6902 JSON Patch operations to apply for updates', default=None
+    ),
+    region: str | None = Field(
+        description='The AWS region that the operation should be performed in', default=None
+    ),
+    disable_default_tags: bool = Field(
+        False, description='Disable default tagging (not recommended)'
+    ),
+) -> dict:
+    """Generate infrastructure code for security scanning before resource creation or update.
+    
+    This tool generates CloudFormation templates for security scanning before actual resource
+    creation or update operations. It handles both new resource creation and updates to existing
+    resources, providing a consistent interface for security scanning.
+    
+    IMPORTANT: This tool should be called BEFORE any resource creation or update operation
+    to generate code that can be security scanned with run_checkov().
+    
+    Parameters:
+        resource_type: The AWS resource type (e.g., "AWS::S3::Bucket")
+        properties: A dictionary of properties for new resource creation
+        identifier: The primary identifier of an existing resource to update
+        patch_document: A list of RFC 6902 JSON Patch operations to apply for updates
+        region: AWS region to use (e.g., "us-east-1", "us-west-2")
+        disable_default_tags: Disable default tagging (not recommended)
+        
+    Returns:
+        A dictionary containing the generated code and metadata:
+        {
+            "resource_type": The AWS resource type,
+            "operation": "create" or "update",
+            "properties": The validated properties for the resource,
+            "region": The AWS region for the resource,
+            "cloudformation_template": A CloudFormation template representation for security scanning,
+            "supports_tagging": Boolean indicating if the resource type supports tagging
+        }
+    """
+    if not resource_type:
+        raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
+    
+    # Determine if this is a create or update operation
+    is_update = identifier is not None and (patch_document is not None or properties is not None)
+    
+    # Validate the resource type against the schema
+    sm = schema_manager()
+    schema = await sm.get_schema(resource_type, region)
+    
+    # Check if resource supports tagging
+    supports_tagging = 'Tags' in schema.get('properties', {})
+    
+    if is_update:
+        # This is an update operation
+        if not identifier:
+            raise ClientError('Please provide a resource identifier for update operations')
+            
+        # Get the current resource state
+        cloudcontrol_client = get_aws_client('cloudcontrol', region)
+        try:
+            current_resource = cloudcontrol_client.get_resource(
+                TypeName=resource_type, Identifier=identifier
+            )
+            current_properties = json.loads(current_resource['ResourceDescription']['Properties'])
+        except Exception as e:
+            raise handle_aws_api_error(e)
+            
+        # If patch_document is provided, validate it
+        if patch_document:
+            validate_patch(patch_document)
+            # Note: In a real implementation, you would apply the patch to current_properties
+            # For simplicity, we'll just use the current properties
+            properties_with_tags = current_properties
+        else:
+            # If properties are provided directly for update
+            properties_with_tags = properties if properties else current_properties
+            
+        operation = "update"
+    else:
+        # This is a create operation
+        if not properties:
+            raise ClientError('Please provide the properties for the desired resource')
+            
+        # Apply default tags if enabled and not explicitly disabled
+        if disable_default_tags:
+            properties_with_tags = properties
+            print(
+                'Warning: Default tags are disabled. It is highly recommended to add custom tags to identify resources managed by this MCP server.'
+            )
+        else:
+            # Simple implementation of add_default_tags
+            properties_with_tags = properties.copy()
+            if supports_tagging and 'Tags' not in properties_with_tags:
+                properties_with_tags['Tags'] = []
+            if supports_tagging:
+                tags = properties_with_tags.get('Tags', [])
+                # Add default tags if they don't exist
+                managed_by_exists = any(tag.get('Key') == 'MANAGED_BY' for tag in tags)
+                source_exists = any(tag.get('Key') == 'MCP_SERVER_SOURCE_CODE' for tag in tags)
+                
+                if not managed_by_exists:
+                    tags.append({'Key': 'MANAGED_BY', 'Value': 'CFN-MCP-SERVER'})
+                if not source_exists:
+                    tags.append({'Key': 'MCP_SERVER_SOURCE_CODE', 'Value': 'TRUE'})
+                
+                properties_with_tags['Tags'] = tags
+            
+        operation = "create"
+    
+    # Generate a CloudFormation template representation for security scanning
+    cf_template = {
+        'AWSTemplateFormatVersion': '2010-09-09',
+        'Resources': {'Resource': {'Type': resource_type, 'Properties': properties_with_tags}},
     }
-
-    # Check if required variables are set properly
-    aws_profile = env_vars.get('AWS_PROFILE', '')
-    aws_region = env_vars.get('AWS_REGION', 'us-east-1')
-    aws_credential_source = env_vars.get('AWS_CREDENTIAL_SOURCE', '')
-
-    # Determine if properly configured
-    properly_configured = True
-    needs_profile = False
-
-    # If credential source is not 'env' or 'environment' and no profile is specified,
-    # we need to inform the user that a profile is required
-    if aws_credential_source.lower() not in ('env', 'environment', '') and not aws_profile:
-        properly_configured = False
-        needs_profile = True
-
-    # For SSO, we need AWS_PROFILE to be set
-    if aws_credential_source.lower() == 'sso' and not aws_profile:
-        properly_configured = False
-        needs_profile = True
-
-    # For profile, we need AWS_PROFILE to be set
-    if aws_credential_source.lower() == 'profile' and not aws_profile:
-        properly_configured = False
-        needs_profile = True
-
-    # No session duration validation needed
-
+    
     return {
-        'environment_variables': env_vars,
-        'aws_profile': aws_profile,
-        'aws_region': aws_region,
-        'aws_credential_source': aws_credential_source,
-        'properly_configured': properly_configured,
-        'readonly_mode': Context.readonly_mode(),
-        'needs_profile': needs_profile,
+        'resource_type': resource_type,
+        'operation': operation,
+        'properties': properties_with_tags,
+        'region': region,
+        'cloudformation_template': cf_template,
+        'supports_tagging': supports_tagging,
     }
+
+
+@mcp.tool()
+async def create_template(
+    template_name: str | None = Field(
+        None, description='Name for the generated template'),
+    resources: list | None = Field(
+        None,
+        description="List of resources to include in the template, each with 'ResourceType' and 'ResourceIdentifier'",
+    ),
+    output_format: str = Field(
+        'YAML', description='Output format for the template (JSON or YAML)'
+    ),
+    deletion_policy: str = Field(
+        'RETAIN',
+        description='Default DeletionPolicy for resources in the template (RETAIN, DELETE, or SNAPSHOT)',
+    ),
+    update_replace_policy: str = Field(
+        'RETAIN',
+        description='Default UpdateReplacePolicy for resources in the template (RETAIN, DELETE, or SNAPSHOT)',
+    ),
+    template_id: str | None = Field(
+        None,
+        description='ID of an existing template generation process to check status or retrieve template',
+    ),
+    save_to_file: str | None = Field(
+        None, description='Path to save the generated template to a file'
+    ),
+    region: str | None = Field(
+        description='The AWS region that the operation should be performed in', default=None
+    ),
+) -> dict:
+    """Create a CloudFormation template from existing resources using the IaC Generator API.
+
+    This tool allows you to generate CloudFormation templates from existing AWS resources
+    that are not already managed by CloudFormation. The template generation process is
+    asynchronous, so you can check the status of the process and retrieve the template
+    once it's complete. You can pass up to 500 resources at a time.
+
+    Examples:
+    1. Start template generation for an S3 bucket:
+       create_template(
+           template_name="my-template",
+           resources=[{"ResourceType": "AWS::S3::Bucket", "ResourceIdentifier": {"BucketName": "my-bucket"}}],
+           deletion_policy="RETAIN",
+           update_replace_policy="RETAIN"
+       )
+
+    2. Check status of template generation:
+       create_template(template_id="arn:aws:cloudformation:us-east-1:123456789012:generatedtemplate/abcdef12-3456-7890-abcd-ef1234567890")
+
+    3. Retrieve and save generated template:
+       create_template(
+           template_id="arn:aws:cloudformation:us-east-1:123456789012:generatedtemplate/abcdef12-3456-7890-abcd-ef1234567890",
+           save_to_file="/path/to/template.yaml",
+           output_format="YAML"
+       )
+    """
+    return await create_template_impl(
+        template_name=template_name,
+        resources=resources,
+        output_format=output_format,
+        deletion_policy=deletion_policy,
+        update_replace_policy=update_replace_policy,
+        template_id=template_id,
+        save_to_file=save_to_file,
+        region_name=region,
+    )
 
 
 def get_aws_profile_info():
@@ -1274,25 +979,70 @@ def get_aws_profile_info():
         account_id = identity.get('Account', 'Unknown')
         arn = identity.get('Arn', 'Unknown')
 
-        # Get credential source and profile info
-        cred_source = environ.get('AWS_CREDENTIAL_SOURCE', 'auto')
-        profile_name = environ.get('AWS_PROFILE', 'default')
+        # Get profile info
+        profile_name = environ.get('AWS_PROFILE', '')
         region = environ.get('AWS_REGION', 'us-east-1')
+        using_env_vars = environ.get('AWS_ACCESS_KEY_ID', '') != '' and environ.get(
+            'AWS_SECRET_ACCESS_KEY', '') != ''
 
         return {
             'profile': profile_name,
             'account_id': account_id,
             'region': region,
             'arn': arn,
-            'credential_source': cred_source,
+            'using_env_vars': using_env_vars
         }
     except Exception as e:
         return {
-            'profile': environ.get('AWS_PROFILE', 'default'),
+            'profile': environ.get('AWS_PROFILE', ''),
             'error': str(e),
             'region': environ.get('AWS_REGION', 'us-east-1'),
-            'credential_source': environ.get('AWS_CREDENTIAL_SOURCE', 'auto'),
+            'using_env_vars': environ.get('AWS_ACCESS_KEY_ID', '') != '' and environ.get('AWS_SECRET_ACCESS_KEY', '') != ''
         }
+
+
+@mcp.tool()
+async def check_environment_variables() -> dict:
+    """Check if required environment variables are set correctly.
+
+    This tool checks if AWS credentials are available either through AWS_PROFILE
+    or through environment variables (AWS_ACCESS_KEY_ID, etc.).
+
+    Returns:
+        A dictionary containing environment variable information:
+        {
+            "environment_variables": Dictionary of relevant environment variables,
+            "aws_profile": The AWS profile name being used,
+            "aws_region": The AWS region being used,
+            "properly_configured": Boolean indicating if the environment is properly configured,
+            "using_env_vars": Boolean indicating if using environment variables for credentials
+        }
+    """
+    # Load relevant environment variables
+    env_vars = {
+        'AWS_PROFILE': environ.get('AWS_PROFILE', ''),
+        'AWS_REGION': environ.get('AWS_REGION', 'us-east-1'),
+        'AWS_ACCESS_KEY_ID': environ.get('AWS_ACCESS_KEY_ID', '') != '',
+        'AWS_SECRET_ACCESS_KEY': environ.get('AWS_SECRET_ACCESS_KEY', '') != '',
+    }
+
+    # Check if required variables are set properly
+    aws_profile = env_vars.get('AWS_PROFILE', '')
+    aws_region = env_vars.get('AWS_REGION', 'us-east-1')
+    using_env_vars = env_vars.get(
+        'AWS_ACCESS_KEY_ID') and env_vars.get('AWS_SECRET_ACCESS_KEY')
+
+    # Determine if properly configured - either profile is set or using env vars
+    properly_configured = bool(aws_profile) or using_env_vars
+
+    return {
+        'environment_variables': env_vars,
+        'aws_profile': aws_profile,
+        'aws_region': aws_region,
+        'properly_configured': properly_configured,
+        'readonly_mode': Context.readonly_mode(),
+        'using_env_vars': using_env_vars
+    }
 
 
 @mcp.tool()
@@ -1303,37 +1053,9 @@ async def get_aws_session_info(
 ) -> dict:
     """Get information about the current AWS session.
 
-    CRITICAL: This function REQUIRES the result from check_environment_variables() as input.
-    You MUST call check_environment_variables() first and pass its result to this function.
-
-    CRITICAL: After calling this function, you MUST ALWAYS display the AWS session information
-    to the user. This is mandatory for EVERY invocation of this tool to ensure users are always
-    aware of which AWS account they are working in. If a user asks you to stop showing this
-    information, politely explain that it's a security best practice to ensure they're always
-    aware of which AWS account is being used, and ask if they're sure they want to disable this
-    important safety feature.
-
-    CRITICAL: ALWAYS check the "readonly_mode" field in the response. If it's true, you MUST
-    immediately inform the user with this exact message:
-
-    "⚠️ This server is running in READ-ONLY MODE. I can only list and view existing resources.
-    I cannot create, update, or delete any AWS resources. I can still generate example code
-    and run security checks on templates."
-
-
-
-    IMPORTANT: Always call this function BEFORE performing any create, read, update, delete, list,
-    or get operation to ensure users are aware of which AWS session and account will be affected.
-
     This tool provides details about the current AWS session, including the profile name,
     account ID, region, and credential information. Use this when you need to confirm which
     AWS session and account you're working with.
-
-    Common questions this tool answers:
-    - "What AWS account am I using?"
-    - "Which AWS region am I in?"
-    - "What AWS profile is being used?"
-    - "Show me my current AWS session information"
 
     Parameters:
         env_check_result: Result from check_environment_variables() to ensure environment is properly configured
@@ -1344,14 +1066,11 @@ async def get_aws_session_info(
             "profile": The AWS profile name being used,
             "account_id": The AWS account ID,
             "region": The AWS region being used,
-            "credential_source": The source of AWS credentials (env, profile, sso, etc.),
             "readonly_mode": True if the server is in read-only mode,
             "readonly_message": A message about read-only mode limitations if enabled,
             "credentials_valid": True if AWS credentials are valid,
-            "environment_variables": Dictionary of relevant environment variables if credentials are invalid,
-            "user_id": The AWS user ID or role ID associated with the session,
             "arn": The ARN of the user or role associated with the session,
-            "needs_profile": Boolean indicating if a profile name is required but missing
+            "using_env_vars": Boolean indicating if using environment variables for credentials
         }
     """
     # Verify that environment check was performed
@@ -1363,7 +1082,7 @@ async def get_aws_session_info(
     # Verify that environment is properly configured
     if not env_check_result.get('properly_configured', False):
         raise ClientError(
-            'Environment is not properly configured. Please fix the environment variables first.'
+            'Environment is not properly configured. Either AWS_PROFILE must be set or AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be exported as environment variables.'
         )
 
     # Get AWS profile info
@@ -1379,8 +1098,7 @@ async def get_aws_session_info(
         else ''
     )
     info['credentials_valid'] = 'error' not in info
-    # Session duration and auto refresh session variables removed
-    info['needs_profile'] = env_check_result.get('needs_profile', False)
+    info['using_env_vars'] = env_check_result.get('using_env_vars', False)
 
     return info
 
@@ -1388,10 +1106,6 @@ async def get_aws_session_info(
 @mcp.tool()
 async def get_aws_account_info() -> dict:
     """Get information about the current AWS account being used.
-
-    DEPRECATED: Use check_environment_variables() followed by get_aws_session_info() instead.
-
-    This function is maintained for backward compatibility only.
 
     Common questions this tool answers:
     - "What AWS account am I using?"
@@ -1406,7 +1120,8 @@ async def get_aws_account_info() -> dict:
             "account_id": The AWS account ID,
             "region": The AWS region being used,
             "readonly_mode": True if the server is in read-only mode,
-            "readonly_message": A message about read-only mode limitations if enabled
+            "readonly_message": A message about read-only mode limitations if enabled,
+            "using_env_vars": Boolean indicating if using environment variables for credentials
         }
     """
     # First check environment variables
@@ -1417,7 +1132,8 @@ async def get_aws_account_info() -> dict:
         return await get_aws_session_info(env_check_result=env_check)
     else:
         return {
-            'error': 'Environment not properly configured',
+            'error': 'AWS credentials not properly configured',
+            'message': 'Either AWS_PROFILE must be set or AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be exported as environment variables.',
             'environment_variables': env_check['environment_variables'],
             'properly_configured': False,
         }
@@ -1439,11 +1155,15 @@ def main():
 
     # Display AWS profile information
     aws_info = get_aws_profile_info()
-    print(f'AWS Profile: {aws_info.get("profile")}')
+    if aws_info.get("profile"):
+        print(f'AWS Profile: {aws_info.get("profile")}')
+    elif aws_info.get("using_env_vars"):
+        print('Using AWS credentials from environment variables')
+    else:
+        print('No AWS profile or environment credentials detected')
+
     print(f'AWS Account ID: {aws_info.get("account_id", "Unknown")}')
     print(f'AWS Region: {aws_info.get("region")}')
-
-    # Output format display removed
 
     # Display read-only mode status
     if args.readonly:

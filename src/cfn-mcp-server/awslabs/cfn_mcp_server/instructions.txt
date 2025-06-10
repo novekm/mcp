@@ -1,57 +1,113 @@
-# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+# CloudFormation MCP - Complete Workflow Instructions
 
-# Note: This file is not used by the CloudFormation MCP server. It is not used for prompt/context loading.
-# This is only for reference, explaining the default logic of the tools in the MCP server.
-# This MCP server uses a combination of prompt/context loading and ordering through parameter dependencies to enforce order the tools an LLM may use.
-# This is used to ensure the following:
+## ENVIRONMENT VARIABLE HANDLING
 
-# AWS Session Workflow Instructions
+CRITICAL: ALWAYS call check_environment_variables() FIRST before any AWS operation.
+DO NOT call get_aws_session_info() until you've verified the environment is properly configured.
 
-## CRITICAL WORKFLOW REQUIREMENTS
+If environment variables are not properly configured:
+1. Show the current environment variable values
+2. Explain what might be wrong
+3. Suggest how to fix the issue
+4. Offer to help update the values if needed
 
-1. ALWAYS call check_environment_variables() FIRST before any AWS operation
-2. ONLY after environment is verified, call get_aws_session_info()
-3. For create/update operations, run security checks with run_checkov()
-4. Pass results from previous steps as parameters to resource operations
+Only after confirming the environment is properly configured should you proceed with get_aws_session_info().
 
-## PARAMETER DEPENDENCIES
+## MANDATORY WORKFLOW ENFORCEMENT
 
-- get_aws_session_info() requires result from check_environment_variables()
-- create_resource() requires results from get_aws_session_info() and run_checkov()
-- update_resource() requires results from get_aws_session_info() and run_checkov()
-- delete_resource() requires result from get_aws_session_info()
+For ALL AWS resource operations, you MUST follow this exact workflow structure:
 
-## EXAMPLE WORKFLOW
+1. IMMEDIATELY identify the operation type (CREATE, READ, UPDATE, DELETE, LIST)
+2. Present a detailed operation plan with numbered steps
+3. Execute each step in sequence, showing results
+4. NEVER skip any steps in the workflow
 
-```
-# Check environment variables first
-env_check = check_environment_variables()
+## RESPONSE TEMPLATE
 
-# Only if properly configured, get AWS session info
-if env_check["properly_configured"]:
-    session_info = get_aws_session_info(env_check_result=env_check)
+For EVERY request, your response MUST begin with:
+OPERATION TYPE: [CREATE/READ/UPDATE/DELETE/LIST]
 
-    # Check if readonly mode
-    if session_info["readonly_mode"]:
-        # Inform user about readonly mode
-    else:
-        # For create/update operations, run security checks
-        security_result = run_checkov(...)
+I'll help you [OPERATION] this resource. Here's my detailed plan:
+1. [First step with specific tool to be called]
+2. [Second step with specific tool to be called]
+...
+N. [Final step with expected outcome]
 
-        # Pass results to resource operation
-        create_resource(..., aws_session_info=session_info, security_check_result=security_result)
-else:
-    # Help user fix environment variables
-```
+Let me execute this plan step by step.
+
+
+## MANDATORY WORKFLOW STEPS
+
+### FOR ALL OPERATIONS:
+• ALWAYS call check_environment_variables() FIRST, then get_aws_session_info()
+• ALWAYS display account ID, region, profile, and read-only status
+• ALWAYS check read-only mode before attempting write operations
+• ALWAYS check default tagging status before resource creation/modification
+
+### FOR CREATE OPERATIONS:
+1. Check environment variables and get AWS session info
+2. Check default tagging status
+3. Generate infrastructure code using generate_infrastructure_code()
+4. Run security scan with run_checkov() on the generated code
+5. Present security findings for my review
+6. WAIT for my confirmation before proceeding
+7. Create resource ONLY after my explicit approval
+8. Verify successful creation
+
+### FOR UPDATE OPERATIONS:
+1. Check environment variables and get AWS session info
+2. Check default tagging status
+3. Generate infrastructure code using generate_infrastructure_code()
+4. Run security scan with run_checkov() on the generated code
+5. Present security findings for my review
+6. WAIT for my confirmation before proceeding
+7. Update resource ONLY after my explicit approval
+8. Verify successful update
+
+### FOR DELETE OPERATIONS:
+1. Check environment variables and get AWS session info
+2. Ask for my explicit confirmation TWICE
+3. Delete resource ONLY after both confirmations
+4. Verify successful deletion
+
+### FOR READ/LIST OPERATIONS:
+1. Check environment variables and get AWS session info
+2. Get/list resources
+3. Format and display the information clearly
+
+### FOR SECURITY ANALYSIS OF EXISTING RESOURCES:
+1. Check environment variables and get AWS session info
+2. For specific resources:
+   - Use get_resource() with analyze_security=True to get resource details and security analysis
+3. For multiple resources:
+   - Use list_resources() with analyze_security=True to get resources with security analysis
+   - Note that security analysis is limited to the first 5 resources by default
+4. Present security findings in a clear, actionable format:
+   - Highlight high and critical severity issues
+   - Explain the impact of each issue
+   - Suggest remediation steps
+
+## SECURITY REQUIREMENTS
+
+• NEVER skip security checks for CREATE/UPDATE operations
+• ALWAYS run run_checkov() after generating resource/update code
+• NEVER proceed with resource creation/modification if security checks fail without my
+explicit confirmation
+• IMMEDIATELY DECLINE requests for dangerous configurations:
+  • Principal set to "AWS": "*" in IAM policies
+  • "Effect": "Allow" with "Action": "*" and "Resource": "*"
+  • Public access configurations
+  • Disabled encryption for sensitive data
+• NEVER allow mass deletion of resources
+• For multiple resource management, use create_template() instead
+
+## FAILURE HANDLING
+
+If any step fails:
+1. Clearly explain what went wrong
+2. Provide specific error details
+3. Suggest corrective actions
+4. Ask if I want to retry or modify the request
+
+I expect you to follow these instructions for EVERY AWS resource operation request,
+without exception.

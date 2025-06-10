@@ -2,6 +2,12 @@
 
 Model Context Protocol (MCP) server that enables LLMs to directly create and manage over 1,100 AWS resources through natural language using AWS Cloud Control API and Iac Generator with Infrastructure as Code best practices.
 
+## Prerequisites
+
+- All prerequisites listed in the [Installation and Setup](https://github.com/awslabs/mcp#installation-and-setup) section within the awslabs/mcp README should be satisfied
+- Valid AWS credentials
+- Ensure your IAM role or user has the necessary permissions (see [Security Considerations](#security-considerations))
+
 ## Features
 
 - **Resource Creation**: Uses a declarative approach to create any of 1,100+ AWS resources through Cloud Control API
@@ -67,14 +73,6 @@ The MCP server implements several critical security protections:
 
 This MCP server requires authentication to an AWS account, as its primary intent is to be able to manage infrastructure. There are multiple options you have for authentication such as:
 
-### SSO (Recommended)
-
-We recommend using this MCP server with single-sign-on (SSO) to provide short-lived credentials that are automatically rotated. This would be using AWS IAM Identity Center (formerly known as AWS SSO). Beyond the security best practices, this MCP server also will attempt to automatically refresh these credentials if they expire. This is not possible for the other options. To configure sso, run the command `aws sso configure` and follow the steps in the wizard. To use the sso profile, run the command `aws sso login`
-
-**NOTE:** If you have configured sso with `aws configure sso` and get an error that mentions a `sso_start_url` not being present, it is because you are not using the correct profile. When using the `aws configure sso`, it will walk you through setting up sso, including creating an AWS Profile. The error is occurring because you either didn't define a start url or start region when configuring sso, or you are not supplying the name of the one of the sso profiles you created. The command you should run is `aws sso login --profile YOUR-PROFILE-NAME` replacing `YOUR-PROFILE-NAME` with the name of the profile as it appears in your config file. You can see the values of this config file at `~/.aws/config` on macOS and Linux machines, or on Windows at `%UserProfile%\.aws\config` which usually expands to `C:\Users\username\.aws\config`.
-
-Optionally, when running `aws configure sso` if you set the profile name as `default` running `aws sso login` will use that profile without you having to pass in the `--profile` flag. However, we highly recommend that you do not use a default AWS profile, especially if you are operating in a multi-account environment. This could allow accidental configuration changes within an incorrect AWS account. For that reason, we recommend using descriptive profile names when setting up sso, and passing in the `--profile` flag every time you need to sign in.
-
 ### AWS Profile
 
 This can be set via the AWS CLI by running `aws configure` and following the instructions.
@@ -83,50 +81,17 @@ This can be set via the AWS CLI by running `aws configure` and following the ins
 
 You can set environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION) by exporting them.
 
-### Validating Authentication
+## Prerequisites
 
-To validate that you have valid AWS credentials you can run the command:
-
-```sh
-aws sts get-caller-identity
-```
-
-If you are using a profile (such as through sso) you can add the `--profile` flag to target it, replacing `YOUR-PROFILE-NAME` with the name of your profile:
-
-```
-aws sts get-caller-identity --profile YOUR-PROFILE-NAME
-```
-
-### Authentication Flow
-
-This MCP server uses the AWS SDK for Python. The official AWS SDK credential provider chain is:
-
-1. Environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, etc.)
-2. Shared credential file (~/.aws/credentials)
-3. AWS SSO token cache
-4. Web identity token from environment or config file
-5. EC2/ECS instance profile credentials
-
-By default, if no explicit value set, it will follow this default flow. This poses a challenge, because there could be a situation where you have valid credentials, but they are just further down the chain, after invalid credentials. This would prevent authentication from being able to happen successfully.
-
-This MCP server allows for customization of this flow, allowing you to set the specific credential source you wish to use with the `AWS_CREDENTIAL_SOURCE` environment variable. Valid values for this are as follows:
-
-- `AWS_PROFILE`: The name of the AWS profile you wish to use. This must be set if `AWS_CREDENTIAL_SOURCE` is set to anything other than `env` or `environment` unless you are using the default AWS profile. This is used by the MCP server for configuration, and automatic session refresh (if possible).
-- `env` or `environment`: Attempts to use environment variables that a user has exported
-- `profile`: Attempts to use the profile defined in the `AWS_PROFILE` environment variable. If this value is set, you must also set a value for the `AWS_PROFILE` environment variable.
-- `sso`: Attempts to use the SSO token cache
-- `instance` or `role`: Attempts to use an instance profile (for service, such as EC2 instance or a ECS/EKS container)
-
-**Note:** There is also an `AWS_REGION` environment variable that can be set. If you do net set this, it will default to `us-east-1`.
+1. Configure AWS credentials:
+   - Via AWS CLI: `aws configure`
+   - Or set environment variables (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_DEFAULT_REGION)
+2. Ensure your IAM role or user has the necessary permissions (see [Security Considerations](#security-considerations))
 
 ## Installation
 
 Here are some ways you can work with MCP across AWS, and we'll be adding support to more products including Amazon Q Developer CLI soon: (e.g. for Amazon Q Developer CLI MCP, `~/.aws/amazonq/mcp.json`):
 
-### With SSO
-
-Ensure you have run `aws sso configure` to configure sso, and `aws sso login` to login via SSO (which generates the necessary sso token and caches it).
-
 ```json
 {
   "mcpServers": {
@@ -134,8 +99,7 @@ Ensure you have run `aws sso configure` to configure sso, and `aws sso login` to
       "command": "uvx",
       "args": ["awslabs.cfn-mcp-server@latest"],
       "env": {
-        "AWS_CREDENTIAL_SOURCE": "sso",
-        "AWS_PROFILE": "your-profile-name"
+        "AWS_PROFILE": "your-named-profile"
       },
       "disabled": false,
       "autoApprove": []
@@ -144,19 +108,16 @@ Ensure you have run `aws sso configure` to configure sso, and `aws sso login` to
 }
 ```
 
-### With AWS Profile
-
-Ensure your AWS Profile has been configured correctly. To configure an AWS Profile, you can either mainly edit the `config` file in `~/.aws` (Linux/Unix) or you can use the AWS CLI by running `aws configure`.
+If you would like to prevent the MCP from taking any mutating actions (i.e. Create/Update/Delete Resource), you can specify the readonly flag as demonstrated below:
 
 ```json
 {
   "mcpServers": {
     "awslabs.cfn-mcp-server": {
       "command": "uvx",
-      "args": ["awslabs.cfn-mcp-server@latest"],
+      "args": ["awslabs.cfn-mcp-server@latest", "--readonly"],
       "env": {
-        "AWS_CREDENTIAL_SOURCE": "profile",
-        "AWS_PROFILE": "your-profile-name"
+        "AWS_PROFILE": "your-named-profile"
       },
       "disabled": false,
       "autoApprove": []
@@ -165,19 +126,30 @@ Ensure your AWS Profile has been configured correctly. To configure an AWS Profi
 }
 ```
 
-### With Exported Environment Variables
+or docker after a successful `docker build -t awslabs/cfn-mcp-server .`:
 
-Ensure you have exported valid environment variables. You can check this by running `env | grep AWS_`
+```file
+# fictitious `.env` file with AWS temporary credentials
+AWS_ACCESS_KEY_ID=ASIAIOSFODNN7EXAMPLE
+AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
+AWS_SESSION_TOKEN=AQoEXAMPLEH4aoAH0gNCAPy...truncated...zrkuWJOgQs8IZZaIv2BXIa2R4Olgk
+```
 
 ```json
 {
   "mcpServers": {
     "awslabs.cfn-mcp-server": {
-      "command": "uvx",
-      "args": ["awslabs.cfn-mcp-server@latest"],
-      "env": {
-        "AWS_CREDENTIAL_SOURCE": "env"
-      },
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "--interactive",
+        "--env-file",
+        "/full/path/to/file/above/.env",
+        "awslabs/cfn-mcp-server:latest",
+        "--readonly" // Optional paramter if you would like to restrict the MCP to only read actions
+      ],
+      "env": {},
       "disabled": false,
       "autoApprove": []
     }
@@ -185,30 +157,113 @@ Ensure you have exported valid environment variables. You can check this by runn
 }
 ```
 
-### Default Resource Tagging
+NOTE: Your credentials will need to be kept refreshed from your host
 
-Default tags are enabled by default to help you easily identify which AWS resources in your account are being managed by the CloudFormation MCP server. When enabled, the following tags will be automatically added to all resources that support tagging:
+## Tools
 
-- `MANAGED_BY`: CloudFormation MCP Server
-- `MCP_SERVER_SOURCE_CODE`: https://github.com/awslabs/mcp/tree/main/src/cfn-mcp-server
+### create_resource
 
-The tagging functionality is implemented in the `add_default_tags` function in `cloud_control_utils.py`, which checks if the resource type supports tagging and adds the default tags if enabled.
+Creates an AWS resource using the AWS Cloud Control API with a declarative approach.
+**Example**: Create an S3 bucket with versioning and encryption enabled.
 
-To disable automatic tagging, set `DEFAULT_TAGS` to `disabled`. **_HIGHLY recommended_** that if you disable default tags, you include your own descriptive tags so you can distinguish which resources this MCP server is managing versus other resources that may be in your AWS account(s).
+### get_resource
+
+Gets details of a specific AWS resource using the AWS Cloud Control API.
+**Example**: Get the configuration of an EC2 instance.
+
+### update_resource
+
+Updates an AWS resource using the AWS Cloud Control API with a declarative approach.
+**Example**: Update an RDS instance's storage capacity.
+
+### delete_resource
+
+Deletes an AWS resource using the AWS Cloud Control API.
+**Example**: Remove an unused NAT gateway.
+
+### list_resources
+
+Lists AWS resources of a specified type using AWS Cloud Control API.
+**Example**: List all EC2 instances in a region.
+
+### get_resource_schema_information
+
+Get schema information for an AWS CloudFormation resource.
+**Example**: Get the schema for AWS::S3::Bucket to understand all available properties.
+
+### get_request_status
+
+Get the status of a mutation that was initiated by create/update/delete resource.
+**Example**: Give me the status of the last request I made.
+
+### create_tempalte
+
+Create a Cloudformation template from created or listed resources.
+**Example**: Create a YAML template for those resources.
+
+## Basic Usage
+
+Examples of how to use the AWS Infrastructure as Code MCP Server:
+
+- "Create a new S3 bucket with versioning and encryption enabled"
+- "List all EC2 instances in the production environment"
+- "Update the RDS instance to increase storage to 500GB"
+- "Delete unused NAT gateways in VPC-123"
+- "Set up a three-tier architecture with web, app, and database layers"
+- "Create a disaster recovery environment in us-east-1"
+- "Configure CloudWatch alarms for all production resources"
+- "Implement cross-region replication for critical S3 buckets"
+- "Show me the schema for AWS::Lambda::Function"
+- "Create a template for all the resources we created and modified"
+
+## Resource Type support
+
+Resources which are supported by this MCP and the supported operations can be found here: https://docs.aws.amazon.com/cloudcontrolapi/latest/userguide/supported-resources.html
+
+## Security Considerations
+
+When using this MCP server, you should consider:
+
+- Ensuring proper IAM permissions are configured before use
+- Use AWS CloudTrail for additional security monitoring
+- Configure resource-specific permissions when possible instead of wildcard permissions
+- Consider using resource tagging for better governance and cost management
+- Review all changes made by the MCP server as part of your regular security reviews
+- If you would like to restrict the MCP to readonly operations, specify --readonly True in the startup arguments for the MCP
+
+### Required IAM Permissions
+
+Ensure your AWS credentials have the following minimum permissions:
 
 ```json
 {
-  "mcpServers": {
-    "awslabs.cfn-mcp-server": {
-      "command": "uvx",
-      "args": ["awslabs.cfn-mcp-server@latest"],
-      "env": {
-        "AWS_CREDENTIAL_SOURCE": "env",
-        "DEFAULT_TAGS": "disabled"
-      },
-      "disabled": false,
-      "autoApprove": []
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "cloudcontrol:ListResources",
+        "cloudcontrol:GetResource",
+        "cloudcontrol:CreateResource",
+        "cloudcontrol:DeleteResource",
+        "cloudcontrol:UpdateResource",
+        "cloudformation:CreateGeneratedTemplate",
+        "cloudformation:DescribeGeneratedTemplate",
+        "cloudformation:GetGeneratedTemplate"
+      ],
+      "Resource": "*"
     }
-  }
+  ]
 }
 ```
+
+## Limitations
+
+- Operations are limited to resources supported by AWS Cloud Control API and Iac Generator
+- Performance depends on the underlying AWS services' response times
+- Some complex resource relationships may require multiple operations
+- This MCP server can only manage resources in the AWS regions where Cloud Control API and/or Iac Generator is available
+- Resource modification operations may be limited by service-specific constraints
+- Rate limiting may affect operations when managing many resources simultaneously
+- Some resource types might not support all operations (create, read, update, delete)
+- Generated templates are primarily intended for importing existing resources into a CloudFormation stack and may not always work for creating new resources (in another account or region)
