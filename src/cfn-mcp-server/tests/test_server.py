@@ -114,7 +114,7 @@ class TestTools:
         result = await list_resources(resource_type='AWS::CodeStarConnections::Connection')
 
         # Check the result
-        assert result == ['Identifier']
+        assert result['resources'] == ['Identifier']
 
     async def test_get_resource_no_type(self):
         """Testing no type provided."""
@@ -128,8 +128,9 @@ class TestTools:
                 resource_type='AWS::CodeStarConnections::Connection', identifier=None
             )
 
+    @patch('awslabs.cfn_mcp_server.server.schema_manager')
     @patch('awslabs.cfn_mcp_server.server.get_aws_client')
-    async def test_get_resource(self, mock_get_aws_client):
+    async def test_get_resource(self, mock_get_aws_client, mock_schema_manager):
         """Testing simple get."""
         # Setup the mock
         mock_get_resource_return_value = MagicMock(
@@ -139,6 +140,11 @@ class TestTools:
         )
         mock_cloudcontrol_client = MagicMock(get_resource=mock_get_resource_return_value)
         mock_get_aws_client.return_value = mock_cloudcontrol_client
+        
+        # Setup schema manager mock
+        mock_instance = MagicMock()
+        mock_instance.get_schema = AsyncMock(return_value={'properties': []})
+        mock_schema_manager.return_value = mock_instance
 
         # Call the function
         result = await get_resource(
@@ -174,8 +180,9 @@ class TestTools:
                 patch_document=None,
             )
 
+    @patch('awslabs.cfn_mcp_server.server.validate_security_check_result')
     @patch('awslabs.cfn_mcp_server.server.get_aws_client')
-    async def test_update_resource(self, mock_get_aws_client):
+    async def test_update_resource(self, mock_get_aws_client, mock_validate_security):
         """Testing simple update."""
         # Setup the mock
         response = {
@@ -188,12 +195,17 @@ class TestTools:
         mock_update_resource_return_value = MagicMock(return_value=response)
         mock_cloudcontrol_client = MagicMock(update_resource=mock_update_resource_return_value)
         mock_get_aws_client.return_value = mock_cloudcontrol_client
+        
+        # Mock the security validator
+        mock_validate_security.return_value = None
 
         # Call the function
         result = await update_resource(
             resource_type='AWS::CodeStarConnections::Connection',
             identifier='identifier',
             patch_document=[{'op': 'remove', 'path': '/item'}],
+            aws_session_info={'account_id': '123456789012', 'region': 'us-east-1'},
+            security_check_result={'passed': True}
         )
 
         # Check the result
@@ -216,8 +228,9 @@ class TestTools:
                 resource_type='AWS::CodeStarConnections::Connection', properties=None
             )
 
+    @patch('awslabs.cfn_mcp_server.server.validate_security_check_result')
     @patch('awslabs.cfn_mcp_server.server.get_aws_client')
-    async def test_create_resource(self, mock_get_aws_client):
+    async def test_create_resource(self, mock_get_aws_client, mock_validate_security):
         """Testing simple create."""
         # Setup the mock
         response = {
@@ -230,11 +243,16 @@ class TestTools:
         mock_create_resource_return_value = MagicMock(return_value=response)
         mock_cloudcontrol_client = MagicMock(create_resource=mock_create_resource_return_value)
         mock_get_aws_client.return_value = mock_cloudcontrol_client
+        
+        # Mock the security validator
+        mock_validate_security.return_value = None
 
         # Call the function
         result = await create_resource(
             resource_type='AWS::CodeStarConnections::Connection',
             properties={'ConnectionName': 'Name'},
+            aws_session_info={'account_id': '123456789012', 'region': 'us-east-1'},
+            security_check_result={'passed': True}
         )
 
         # Check the result
@@ -274,7 +292,10 @@ class TestTools:
 
         # Call the function
         result = await delete_resource(
-            resource_type='AWS::CodeStarConnections::Connection', identifier='Identifier'
+            resource_type='AWS::CodeStarConnections::Connection', 
+            identifier='Identifier',
+            aws_session_info={'account_id': '123456789012', 'region': 'us-east-1'},
+            confirmed=True
         )
 
         # Check the result
