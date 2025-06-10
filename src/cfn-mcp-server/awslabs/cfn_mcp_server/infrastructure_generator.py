@@ -20,6 +20,7 @@ from awslabs.cfn_mcp_server.cloud_control_utils import add_default_tags, validat
 from awslabs.cfn_mcp_server.errors import ClientError, handle_aws_api_error
 from awslabs.cfn_mcp_server.schema_manager import schema_manager
 
+
 async def generate_infrastructure_code(
     resource_type: str,
     properties: dict = None,
@@ -29,11 +30,11 @@ async def generate_infrastructure_code(
     disable_default_tags: bool = False,
 ) -> dict:
     """Generate infrastructure code for security scanning before resource creation or update.
-    
+
     This function generates CloudFormation templates for security scanning before actual resource
     creation or update operations. It handles both new resource creation and updates to existing
     resources, providing a consistent interface for security scanning.
-    
+
     Args:
         resource_type: The AWS resource type (e.g., "AWS::S3::Bucket")
         properties: A dictionary of properties for new resource creation
@@ -41,7 +42,7 @@ async def generate_infrastructure_code(
         patch_document: A list of RFC 6902 JSON Patch operations to apply for updates
         region: AWS region to use (e.g., "us-east-1", "us-west-2")
         disable_default_tags: Disable default tagging (not recommended)
-        
+
     Returns:
         A dictionary containing the generated code and metadata:
         {
@@ -55,22 +56,22 @@ async def generate_infrastructure_code(
     """
     if not resource_type:
         raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
-    
+
     # Determine if this is a create or update operation
     is_update = identifier is not None and (patch_document is not None or properties is not None)
-    
+
     # Validate the resource type against the schema
     sm = schema_manager()
     schema = await sm.get_schema(resource_type, region)
-    
+
     # Check if resource supports tagging
     supports_tagging = 'Tags' in schema.get('properties', {})
-    
+
     if is_update:
         # This is an update operation
         if not identifier:
             raise ClientError('Please provide a resource identifier for update operations')
-            
+
         # Get the current resource state
         cloudcontrol_client = get_aws_client('cloudcontrol', region)
         try:
@@ -80,7 +81,7 @@ async def generate_infrastructure_code(
             current_properties = json.loads(current_resource['ResourceDescription']['Properties'])
         except Exception as e:
             raise handle_aws_api_error(e)
-            
+
         # If patch_document is provided, validate it
         if patch_document:
             validate_patch(patch_document)
@@ -90,13 +91,13 @@ async def generate_infrastructure_code(
         else:
             # If properties are provided directly for update
             properties_with_tags = properties if properties else current_properties
-            
-        operation = "update"
+
+        operation = 'update'
     else:
         # This is a create operation
         if not properties:
             raise ClientError('Please provide the properties for the desired resource')
-            
+
         # Apply default tags if enabled and not explicitly disabled
         if disable_default_tags:
             properties_with_tags = properties
@@ -105,15 +106,15 @@ async def generate_infrastructure_code(
             )
         else:
             properties_with_tags = add_default_tags(properties, schema)
-            
-        operation = "create"
-    
+
+        operation = 'create'
+
     # Generate a CloudFormation template representation for security scanning
     cf_template = {
         'AWSTemplateFormatVersion': '2010-09-09',
         'Resources': {'Resource': {'Type': resource_type, 'Properties': properties_with_tags}},
     }
-    
+
     return {
         'resource_type': resource_type,
         'operation': operation,

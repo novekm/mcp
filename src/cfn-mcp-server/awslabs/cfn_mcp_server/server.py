@@ -15,12 +15,11 @@
 """awslabs CFN MCP Server implementation."""
 
 import argparse
+import datetime
 import json
 import os
 import subprocess
 import tempfile
-import datetime
-from os import environ
 from awslabs.cfn_mcp_server.aws_client import get_aws_client
 from awslabs.cfn_mcp_server.cloud_control_utils import progress_event, validate_patch
 from awslabs.cfn_mcp_server.context import Context
@@ -28,6 +27,7 @@ from awslabs.cfn_mcp_server.errors import ClientError, handle_aws_api_error
 from awslabs.cfn_mcp_server.iac_generator import create_template as create_template_impl
 from awslabs.cfn_mcp_server.schema_manager import schema_manager
 from mcp.server.fastmcp import FastMCP
+from os import environ
 from pydantic import Field
 from typing import Any, Literal
 
@@ -121,8 +121,7 @@ async def get_resource_schema_information(
         The resource schema information
     """
     if not resource_type:
-        raise ClientError(
-            'Please provide a resource type (e.g., AWS::S3::Bucket)')
+        raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
 
     sm = schema_manager()
     schema = await sm.get_schema(resource_type, region)
@@ -138,7 +137,8 @@ async def list_resources(
         description='The AWS region that the operation should be performed in', default=None
     ),
     analyze_security: bool = Field(
-        False, description='Whether to perform security analysis on the resources (limited to first 5 resources)'
+        False,
+        description='Whether to perform security analysis on the resources (limited to first 5 resources)',
     ),
     max_resources_to_analyze: int = Field(
         5, description='Maximum number of resources to analyze when analyze_security=True'
@@ -160,8 +160,7 @@ async def list_resources(
         }
     """
     if not resource_type:
-        raise ClientError(
-            'Please provide a resource type (e.g., AWS::S3::Bucket)')
+        raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
 
     cloudcontrol = get_aws_client('cloudcontrol', region)
     paginator = cloudcontrol.get_paginator('list_resources')
@@ -175,14 +174,14 @@ async def list_resources(
         raise handle_aws_api_error(e)
 
     resource_identifiers = [response['Identifier'] for response in results]
-    response = {"resources": resource_identifiers}
-    
+    response = {'resources': resource_identifiers}
+
     # Perform security analysis if requested
     if analyze_security and resource_identifiers:
         security_analyses = {}
         # Limit the number of resources to analyze to avoid excessive processing
         resources_to_analyze = resource_identifiers[:max_resources_to_analyze]
-        
+
         for identifier in resources_to_analyze:
             try:
                 # Get resource details with security analysis
@@ -190,18 +189,20 @@ async def list_resources(
                     resource_type=resource_type,
                     identifier=identifier,
                     region=region,
-                    analyze_security=True
+                    analyze_security=True,
                 )
-                
+
                 if 'security_analysis' in resource_info:
                     security_analyses[identifier] = resource_info['security_analysis']
             except Exception as e:
-                security_analyses[identifier] = {"error": str(e)}
-        
-        response["security_analysis"] = security_analyses
+                security_analyses[identifier] = {'error': str(e)}
+
+        response['security_analysis'] = security_analyses
         if len(resource_identifiers) > max_resources_to_analyze:
-            response["note"] = f"Security analysis limited to first {max_resources_to_analyze} resources. Use get_resource() with analyze_security=True for additional resources."
-    
+            response['note'] = (
+                f'Security analysis limited to first {max_resources_to_analyze} resources. Use get_resource() with analyze_security=True for additional resources.'
+            )
+
     return response
 
 
@@ -237,44 +238,40 @@ async def get_resource(
         }
     """
     if not resource_type:
-        raise ClientError(
-            'Please provide a resource type (e.g., AWS::S3::Bucket)')
+        raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
 
     if not identifier:
         raise ClientError('Please provide a resource identifier')
 
     cloudcontrol = get_aws_client('cloudcontrol', region)
     try:
-        result = cloudcontrol.get_resource(
-            TypeName=resource_type, Identifier=identifier)
+        result = cloudcontrol.get_resource(TypeName=resource_type, Identifier=identifier)
         resource_info = {
             'identifier': result['ResourceDescription']['Identifier'],
             'properties': result['ResourceDescription']['Properties'],
         }
-        
+
         # Perform security analysis if requested
         if analyze_security:
             # Generate infrastructure code
             code = await generate_infrastructure_code(
-                resource_type=resource_type,
-                identifier=identifier,
-                region=region
+                resource_type=resource_type, identifier=identifier, region=region
             )
-            
+
             # Run security scan
             security_result = await run_checkov(
-                content=code["cloudformation_template"],
-                file_type="json",
-                framework="cloudformation",
-                resource_type=resource_type
+                content=code['cloudformation_template'],
+                file_type='json',
+                framework='cloudformation',
+                resource_type=resource_type,
             )
-            
+
             # Add security analysis to the result
             resource_info['security_analysis'] = {
                 'security_result': security_result,
-                'template': code["cloudformation_template"]
+                'template': code['cloudformation_template'],
             }
-            
+
         return resource_info
     except Exception as e:
         raise handle_aws_api_error(e)
@@ -326,8 +323,7 @@ async def update_resource(
         }
     """
     if not resource_type:
-        raise ClientError(
-            'Please provide a resource type (e.g., AWS::S3::Bucket)')
+        raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
 
     if not identifier:
         raise ClientError('Please provide a resource identifier')
@@ -343,11 +339,11 @@ async def update_resource(
 
     # Verify aws_session_info has required fields
     if 'account_id' not in aws_session_info or 'region' not in aws_session_info:
-        raise ClientError(
-            'Invalid aws_session_info. You must call get_aws_session_info() first')
+        raise ClientError('Invalid aws_session_info. You must call get_aws_session_info() first')
 
     # Validate security check results
     from awslabs.cfn_mcp_server.security_validator import validate_security_check_result
+
     validate_security_check_result(security_check_result, resource_type, skip_security_check)
 
     if Context.readonly_mode() or aws_session_info.get('readonly_mode', False):
@@ -470,8 +466,7 @@ async def run_checkov(
             'requires_confirmation': checkov_status['needs_user_action'],
             'options': [
                 {'option': 'install_help', 'description': 'Get help installing Checkov'},
-                {'option': 'proceed_without',
-                    'description': 'Proceed without security checks'},
+                {'option': 'proceed_without', 'description': 'Proceed without security checks'},
                 {'option': 'cancel', 'description': 'Cancel the operation'},
             ],
         }
@@ -526,10 +521,8 @@ async def run_checkov(
             # Some checks failed
             try:
                 results = json.loads(process.stdout) if process.stdout else {}
-                failed_checks = results.get(
-                    'results', {}).get('failed_checks', [])
-                passed_checks = results.get(
-                    'results', {}).get('passed_checks', [])
+                failed_checks = results.get('results', {}).get('failed_checks', [])
+                passed_checks = results.get('results', {}).get('passed_checks', [])
                 summary = results.get('summary', {})
 
                 return {
@@ -568,8 +561,7 @@ async def create_resource(
     resource_type: str = Field(
         description='The AWS resource type (e.g., "AWS::S3::Bucket", "AWS::RDS::DBInstance")'
     ),
-    properties: dict = Field(
-        description='A dictionary of properties for the resource'),
+    properties: dict = Field(description='A dictionary of properties for the resource'),
     region: str | None = Field(
         description='The AWS region that the operation should be performed in', default=None
     ),
@@ -604,12 +596,10 @@ async def create_resource(
         }
     """
     if not resource_type:
-        raise ClientError(
-            'Please provide a resource type (e.g., AWS::S3::Bucket)')
+        raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
 
     if not properties:
-        raise ClientError(
-            'Please provide the properties for the desired resource')
+        raise ClientError('Please provide the properties for the desired resource')
 
     # Enforce that aws_session_info comes from get_aws_session_info
     if not aws_session_info or not isinstance(aws_session_info, dict):
@@ -619,11 +609,11 @@ async def create_resource(
 
     # Verify aws_session_info has required fields
     if 'account_id' not in aws_session_info or 'region' not in aws_session_info:
-        raise ClientError(
-            'Invalid aws_session_info. You must call get_aws_session_info() first')
+        raise ClientError('Invalid aws_session_info. You must call get_aws_session_info() first')
 
     # Validate security check results
     from awslabs.cfn_mcp_server.security_validator import validate_security_check_result
+
     validate_security_check_result(security_check_result, resource_type, skip_security_check)
 
     if Context.readonly_mode() or aws_session_info.get('readonly_mode', False):
@@ -656,8 +646,7 @@ async def delete_resource(
     aws_session_info: dict = Field(
         description='Result from get_aws_session_info() to ensure AWS credentials are valid'
     ),
-    confirmed: bool = Field(
-        False, description='Confirm that you want to delete this resource'),
+    confirmed: bool = Field(False, description='Confirm that you want to delete this resource'),
 ) -> dict:
     """Delete an AWS resource.
 
@@ -680,8 +669,7 @@ async def delete_resource(
         }
     """
     if not resource_type:
-        raise ClientError(
-            'Please provide a resource type (e.g., AWS::S3::Bucket)')
+        raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
 
     if not identifier:
         raise ClientError('Please provide a resource identifier')
@@ -699,8 +687,7 @@ async def delete_resource(
 
     # Verify aws_session_info has required fields
     if 'account_id' not in aws_session_info or 'region' not in aws_session_info:
-        raise ClientError(
-            'Invalid aws_session_info. You must call get_aws_session_info() first')
+        raise ClientError('Invalid aws_session_info. You must call get_aws_session_info() first')
 
     if Context.readonly_mode() or aws_session_info.get('readonly_mode', False):
         raise ClientError(
@@ -747,8 +734,7 @@ async def get_resource_request_status(
         }
     """
     if not request_token:
-        raise ClientError(
-            'Please provide a request token to track the request')
+        raise ClientError('Please provide a request token to track the request')
 
     cloudcontrol_client = get_aws_client('cloudcontrol', region)
     try:
@@ -783,14 +769,14 @@ async def generate_infrastructure_code(
     ),
 ) -> dict:
     """Generate infrastructure code for security scanning before resource creation or update.
-    
+
     This tool generates CloudFormation templates for security scanning before actual resource
     creation or update operations. It handles both new resource creation and updates to existing
     resources, providing a consistent interface for security scanning.
-    
+
     IMPORTANT: This tool should be called BEFORE any resource creation or update operation
     to generate code that can be security scanned with run_checkov().
-    
+
     Parameters:
         resource_type: The AWS resource type (e.g., "AWS::S3::Bucket")
         properties: A dictionary of properties for new resource creation
@@ -798,7 +784,7 @@ async def generate_infrastructure_code(
         patch_document: A list of RFC 6902 JSON Patch operations to apply for updates
         region: AWS region to use (e.g., "us-east-1", "us-west-2")
         disable_default_tags: Disable default tagging (not recommended)
-        
+
     Returns:
         A dictionary containing the generated code and metadata:
         {
@@ -812,22 +798,22 @@ async def generate_infrastructure_code(
     """
     if not resource_type:
         raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
-    
+
     # Determine if this is a create or update operation
     is_update = identifier is not None and (patch_document is not None or properties is not None)
-    
+
     # Validate the resource type against the schema
     sm = schema_manager()
     schema = await sm.get_schema(resource_type, region)
-    
+
     # Check if resource supports tagging
     supports_tagging = 'Tags' in schema.get('properties', {})
-    
+
     if is_update:
         # This is an update operation
         if not identifier:
             raise ClientError('Please provide a resource identifier for update operations')
-            
+
         # Get the current resource state
         cloudcontrol_client = get_aws_client('cloudcontrol', region)
         try:
@@ -837,7 +823,7 @@ async def generate_infrastructure_code(
             current_properties = json.loads(current_resource['ResourceDescription']['Properties'])
         except Exception as e:
             raise handle_aws_api_error(e)
-            
+
         # If patch_document is provided, validate it
         if patch_document:
             validate_patch(patch_document)
@@ -847,13 +833,13 @@ async def generate_infrastructure_code(
         else:
             # If properties are provided directly for update
             properties_with_tags = properties if properties else current_properties
-            
-        operation = "update"
+
+        operation = 'update'
     else:
         # This is a create operation
         if not properties:
             raise ClientError('Please provide the properties for the desired resource')
-            
+
         # Apply default tags if enabled and not explicitly disabled
         if disable_default_tags:
             properties_with_tags = properties
@@ -870,22 +856,22 @@ async def generate_infrastructure_code(
                 # Add default tags if they don't exist
                 managed_by_exists = any(tag.get('Key') == 'MANAGED_BY' for tag in tags)
                 source_exists = any(tag.get('Key') == 'MCP_SERVER_SOURCE_CODE' for tag in tags)
-                
+
                 if not managed_by_exists:
                     tags.append({'Key': 'MANAGED_BY', 'Value': 'CFN-MCP-SERVER'})
                 if not source_exists:
                     tags.append({'Key': 'MCP_SERVER_SOURCE_CODE', 'Value': 'TRUE'})
-                
+
                 properties_with_tags['Tags'] = tags
-            
-        operation = "create"
-    
+
+        operation = 'create'
+
     # Generate a CloudFormation template representation for security scanning
     cf_template = {
         'AWSTemplateFormatVersion': '2010-09-09',
         'Resources': {'Resource': {'Type': resource_type, 'Properties': properties_with_tags}},
     }
-    
+
     return {
         'resource_type': resource_type,
         'operation': operation,
@@ -898,8 +884,7 @@ async def generate_infrastructure_code(
 
 @mcp.tool()
 async def create_template(
-    template_name: str | None = Field(
-        None, description='Name for the generated template'),
+    template_name: str | None = Field(None, description='Name for the generated template'),
     resources: list | None = Field(
         None,
         description="List of resources to include in the template, each with 'ResourceType' and 'ResourceIdentifier'",
@@ -982,22 +967,25 @@ def get_aws_profile_info():
         # Get profile info
         profile_name = environ.get('AWS_PROFILE', '')
         region = environ.get('AWS_REGION', 'us-east-1')
-        using_env_vars = environ.get('AWS_ACCESS_KEY_ID', '') != '' and environ.get(
-            'AWS_SECRET_ACCESS_KEY', '') != ''
+        using_env_vars = (
+            environ.get('AWS_ACCESS_KEY_ID', '') != ''
+            and environ.get('AWS_SECRET_ACCESS_KEY', '') != ''
+        )
 
         return {
             'profile': profile_name,
             'account_id': account_id,
             'region': region,
             'arn': arn,
-            'using_env_vars': using_env_vars
+            'using_env_vars': using_env_vars,
         }
     except Exception as e:
         return {
             'profile': environ.get('AWS_PROFILE', ''),
             'error': str(e),
             'region': environ.get('AWS_REGION', 'us-east-1'),
-            'using_env_vars': environ.get('AWS_ACCESS_KEY_ID', '') != '' and environ.get('AWS_SECRET_ACCESS_KEY', '') != ''
+            'using_env_vars': environ.get('AWS_ACCESS_KEY_ID', '') != ''
+            and environ.get('AWS_SECRET_ACCESS_KEY', '') != '',
         }
 
 
@@ -1029,8 +1017,7 @@ async def check_environment_variables() -> dict:
     # Check if required variables are set properly
     aws_profile = env_vars.get('AWS_PROFILE', '')
     aws_region = env_vars.get('AWS_REGION', 'us-east-1')
-    using_env_vars = env_vars.get(
-        'AWS_ACCESS_KEY_ID') and env_vars.get('AWS_SECRET_ACCESS_KEY')
+    using_env_vars = env_vars.get('AWS_ACCESS_KEY_ID') and env_vars.get('AWS_SECRET_ACCESS_KEY')
 
     # Determine if properly configured - either profile is set or using env vars
     properly_configured = bool(aws_profile) or using_env_vars
@@ -1041,7 +1028,7 @@ async def check_environment_variables() -> dict:
         'aws_region': aws_region,
         'properly_configured': properly_configured,
         'readonly_mode': Context.readonly_mode(),
-        'using_env_vars': using_env_vars
+        'using_env_vars': using_env_vars,
     }
 
 
@@ -1155,9 +1142,9 @@ def main():
 
     # Display AWS profile information
     aws_info = get_aws_profile_info()
-    if aws_info.get("profile"):
+    if aws_info.get('profile'):
         print(f'AWS Profile: {aws_info.get("profile")}')
-    elif aws_info.get("using_env_vars"):
+    elif aws_info.get('using_env_vars'):
         print('Using AWS credentials from environment variables')
     else:
         print('No AWS profile or environment credentials detected')
