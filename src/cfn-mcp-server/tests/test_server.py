@@ -160,7 +160,7 @@ class TestTools:
 
         # Check the result
         assert result == {
-            'properties': {'key': 'value'},
+            'properties': '{"key": "value"}',
             'identifier': 'Identifier',
         }
 
