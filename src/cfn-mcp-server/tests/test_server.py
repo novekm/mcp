@@ -111,7 +111,10 @@ class TestTools:
         mock_get_aws_client.return_value = mock_client
 
         # Call the function
-        result = await list_resources(resource_type='AWS::CodeStarConnections::Connection')
+        result = await list_resources(
+            resource_type='AWS::CodeStarConnections::Connection',
+            analyze_security=False
+        )
 
         # Check the result - the function now returns a dictionary with resources key
         assert result == {'resources': ['Identifier']}
@@ -151,7 +154,9 @@ class TestTools:
 
         # Call the function
         result = await get_resource(
-            resource_type='AWS::CodeStarConnections::Connection', identifier='identifier'
+            resource_type='AWS::CodeStarConnections::Connection', 
+            identifier='identifier',
+            analyze_security=False
         )
 
         # Check the result
