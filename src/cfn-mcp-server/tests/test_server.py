@@ -112,8 +112,7 @@ class TestTools:
 
         # Call the function
         result = await list_resources(
-            resource_type='AWS::CodeStarConnections::Connection',
-            analyze_security=False
+            resource_type='AWS::CodeStarConnections::Connection', analyze_security=False
         )
 
         # Check the result - the function now returns a dictionary with resources key
@@ -154,9 +153,9 @@ class TestTools:
 
         # Call the function
         result = await get_resource(
-            resource_type='AWS::CodeStarConnections::Connection', 
+            resource_type='AWS::CodeStarConnections::Connection',
             identifier='identifier',
-            analyze_security=False
+            analyze_security=False,
         )
 
         # Check the result
