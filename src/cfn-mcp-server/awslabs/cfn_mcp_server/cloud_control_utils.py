@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from awslabs.cfn_mcp_server.errors import ClientError
-from typing import Any, Dict
 
 
 def validate_patch(patch_document: list):
@@ -22,23 +21,19 @@ def validate_patch(patch_document: list):
         if not isinstance(patch_op, dict):
             raise ClientError('Each patch operation must be a dictionary')
         if 'op' not in patch_op:
-            raise ClientError(
-                "Each patch operation must include an 'op' field")
+            raise ClientError("Each patch operation must include an 'op' field")
         if patch_op['op'] not in ['add', 'remove', 'replace', 'move', 'copy', 'test']:
             raise ClientError(
                 f"Operation '{patch_op['op']}' is not supported. Must be one of: add, remove, replace, move, copy, test"
             )
         if 'path' not in patch_op:
-            raise ClientError(
-                "Each patch operation must include a 'path' field")
+            raise ClientError("Each patch operation must include a 'path' field")
         # Value is required for add, replace, and test operations
         if patch_op['op'] in ['add', 'replace', 'test'] and 'value' not in patch_op:
-            raise ClientError(
-                f"The '{patch_op['op']}' operation requires a 'value' field")
+            raise ClientError(f"The '{patch_op['op']}' operation requires a 'value' field")
         # From is required for move and copy operations
         if patch_op['op'] in ['move', 'copy'] and 'from' not in patch_op:
-            raise ClientError(
-                f"The '{patch_op['op']}' operation requires a 'from' field")
+            raise ClientError(f"The '{patch_op['op']}' operation requires a 'from' field")
 
 
 def progress_event(response_event, hooks_events) -> dict[str, str]:
