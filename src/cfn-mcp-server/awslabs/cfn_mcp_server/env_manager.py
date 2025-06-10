@@ -25,7 +25,6 @@ DEFAULT_VALUES = {
     'AWS_REGION': 'us-east-1',
     'AWS_PROFILE': '',
     'AWS_CREDENTIAL_SOURCE': '',
-    'DEFAULT_TAGS': 'enabled',
 }
 
 

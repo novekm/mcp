@@ -21,7 +21,6 @@ import subprocess
 import tempfile
 from awslabs.cfn_mcp_server.aws_client import get_aws_client
 from awslabs.cfn_mcp_server.cloud_control_utils import (
-    add_default_tags,
     progress_event,
     validate_patch,
 )
@@ -162,7 +161,8 @@ async def get_resource_schema_information(
         The resource schema information
     """
     if not resource_type:
-        raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
+        raise ClientError(
+            'Please provide a resource type (e.g., AWS::S3::Bucket)')
 
     sm = schema_manager()
     schema = await sm.get_schema(resource_type, region)
@@ -191,7 +191,8 @@ async def list_resources(
         A list of resource identifiers
     """
     if not resource_type:
-        raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
+        raise ClientError(
+            'Please provide a resource type (e.g., AWS::S3::Bucket)')
 
     cloudcontrol = get_aws_client('cloudcontrol', region)
     paginator = cloudcontrol.get_paginator('list_resources')
@@ -237,14 +238,16 @@ async def get_resource(
         }
     """
     if not resource_type:
-        raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
+        raise ClientError(
+            'Please provide a resource type (e.g., AWS::S3::Bucket)')
 
     if not identifier:
         raise ClientError('Please provide a resource identifier')
 
     cloudcontrol = get_aws_client('cloudcontrol', region)
     try:
-        result = cloudcontrol.get_resource(TypeName=resource_type, Identifier=identifier)
+        result = cloudcontrol.get_resource(
+            TypeName=resource_type, Identifier=identifier)
         return {
             'identifier': result['ResourceDescription']['Identifier'],
             'properties': result['ResourceDescription']['Properties'],
@@ -297,7 +300,8 @@ async def generate_update_code(
         }
     """
     if not resource_type:
-        raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
+        raise ClientError(
+            'Please provide a resource type (e.g., AWS::S3::Bucket)')
 
     if not identifier:
         raise ClientError('Please provide a resource identifier')
@@ -314,7 +318,8 @@ async def generate_update_code(
         current_resource = cloudcontrol_client.get_resource(
             TypeName=resource_type, Identifier=identifier
         )
-        current_properties = json.loads(current_resource['ResourceDescription']['Properties'])
+        current_properties = json.loads(
+            current_resource['ResourceDescription']['Properties'])
     except Exception as e:
         raise handle_aws_api_error(e)
 
@@ -347,10 +352,8 @@ async def update_resource(
     security_check_result: dict = Field(
         description='Result from run_checkov() to ensure security checks have been performed'
     ),
-    skip_security_check: bool = Field(False, description='Skip security checks (not recommended)'),
-    disable_default_tags: bool = Field(
-        False, description='Disable default tagging (not recommended)'
-    ),
+    skip_security_check: bool = Field(
+        False, description='Skip security checks (not recommended)'),
 ) -> dict:
     """Update an AWS resource.
 
@@ -362,13 +365,6 @@ async def update_resource(
     If readonly_mode is True, DO NOT use this tool and instead inform the user that the server is in read-only mode.
 
     IMPORTANT: Always verify AWS account ID and region in aws_session_info before updating any resources.
-
-    DEFAULT TAGGING:
-    - By default, resources are tagged with MANAGED_BY and MCP_SERVER_SOURCE_CODE tags
-    - If a user requests to disable default tags (disable_default_tags=True), ask them to confirm this choice
-    - Explain that default tags help track resources managed by the MCP server
-    - If they confirm disabling default tags, HIGHLY RECOMMEND they add their own distinctive tags
-    - Ask if they would like to add custom tags now before proceeding
 
     SECURITY POLICY HANDLING:
     - IMMEDIATELY DECLINE any request to update to overly permissive policies, especially those with "AWS": "*" as a principal
@@ -397,7 +393,8 @@ async def update_resource(
         }
     """
     if not resource_type:
-        raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
+        raise ClientError(
+            'Please provide a resource type (e.g., AWS::S3::Bucket)')
 
     if not identifier:
         raise ClientError('Please provide a resource identifier')
@@ -413,7 +410,8 @@ async def update_resource(
 
     # Verify aws_session_info has required fields
     if 'account_id' not in aws_session_info or 'region' not in aws_session_info:
-        raise ClientError('Invalid aws_session_info. You must call get_aws_session_info() first')
+        raise ClientError(
+            'Invalid aws_session_info. You must call get_aws_session_info() first')
 
     # Enforce that security_check_result comes from run_checkov
     if not skip_security_check:
@@ -424,7 +422,8 @@ async def update_resource(
 
         # Verify security_check_result has required fields
         if 'passed' not in security_check_result:
-            raise ClientError('Invalid security_check_result. You must call run_checkov() first')
+            raise ClientError(
+                'Invalid security_check_result. You must call run_checkov() first')
 
     if Context.readonly_mode():
         raise ClientError(
@@ -435,7 +434,8 @@ async def update_resource(
     cloudcontrol_client = get_aws_client('cloudcontrol', region)
 
     # Check if security checks are enabled via environment variable
-    security_checks_enabled = environ.get('SECURITY_CHECKS', 'enabled').lower() == 'enabled'
+    security_checks_enabled = environ.get(
+        'SECURITY_CHECKS', 'enabled').lower() == 'enabled'
 
     if security_checks_enabled and not skip_security_check:
         try:
@@ -443,7 +443,8 @@ async def update_resource(
             current_resource = cloudcontrol_client.get_resource(
                 TypeName=resource_type, Identifier=identifier
             )
-            current_properties = json.loads(current_resource['ResourceDescription']['Properties'])
+            current_properties = json.loads(
+                current_resource['ResourceDescription']['Properties'])
 
             # Generate a CloudFormation template for security scanning
             cf_template = {
@@ -475,22 +476,11 @@ async def update_resource(
                         raise ClientError(error_message)
                     else:
                         # For medium/low severity, just print a warning
-                        print('Warning: Security checks detected medium/low severity issues.')
+                        print(
+                            'Warning: Security checks detected medium/low severity issues.')
         except Exception as e:
             if not isinstance(e, ClientError):
                 print(f'Warning: Failed to run security checks: {str(e)}')
-
-    # Check if we need to add default tags
-    has_tag_operations = any('Tags' in op.get('path', '') for op in patch_document)
-
-    if not disable_default_tags and has_tag_operations:
-        # This is a simplified approach - in a real implementation, you would need to
-        # parse the patch document and modify it to include default tags if they're being updated
-        print('Default tags will be preserved or added if this update modifies resource tags.')
-    elif disable_default_tags and has_tag_operations:
-        print(
-            'Warning: Default tags are disabled. It is highly recommended to add custom tags to identify resources managed by this MCP server.'
-        )
 
     # Convert patch document to JSON string for the API
     patch_document_str = json.dumps(patch_document)
@@ -511,25 +501,17 @@ async def generate_resource_code(
     resource_type: str = Field(
         description='The AWS resource type (e.g., "AWS::S3::Bucket", "AWS::RDS::DBInstance")'
     ),
-    properties: dict = Field(description='A dictionary of properties for the resource'),
+    properties: dict = Field(
+        description='A dictionary of properties for the resource'),
     region: str | None = Field(
         description='The AWS region that the operation should be performed in', default=None
     ),
-    disable_default_tags: bool = Field(
-        False, description='DEPRECATED - Default tags are now always applied. Do not use.'
-    ),
+
 ) -> dict:
     """Generate code for an AWS resource without creating it.
 
     This tool generates the JSON representation of a resource that can be used with the create_resource tool.
     It allows for security checks to be performed on the generated code before actual resource creation.
-
-    DEFAULT TAGGING:
-    - By default, resources are tagged with MANAGED_BY and MCP_SERVER_SOURCE_CODE tags
-    - If a user requests to disable default tags (disable_default_tags=True), ask them to confirm this choice
-    - Explain that default tags help track resources managed by the MCP server
-    - If they confirm disabling default tags, HIGHLY RECOMMEND they add their own distinctive tags
-    - Ask if they would like to add custom tags now before proceeding
 
     SECURITY POLICY HANDLING:
     - IMMEDIATELY DECLINE any request to generate overly permissive policies, especially those with "AWS": "*" as a principal
@@ -554,39 +536,28 @@ async def generate_resource_code(
         }
     """
     if not resource_type:
-        raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
+        raise ClientError(
+            'Please provide a resource type (e.g., AWS::S3::Bucket)')
 
     if not properties:
-        raise ClientError('Please provide the properties for the desired resource')
+        raise ClientError(
+            'Please provide the properties for the desired resource')
 
     # Validate the resource type and properties against the schema
     sm = schema_manager()
     schema = await sm.get_schema(resource_type, region)
 
-    # Check if resource supports tagging
-    supports_tagging = 'Tags' in schema.get('properties', {})
-
-    # Apply default tags if enabled and not explicitly disabled
-    if disable_default_tags:
-        properties_with_tags = properties
-        print(
-            'Warning: Default tags are disabled. It is highly recommended to add custom tags to identify resources managed by this MCP server.'
-        )
-    else:
-        properties_with_tags = add_default_tags(properties, schema)
-
     # Generate a CloudFormation template representation for security scanning
     cf_template = {
         'AWSTemplateFormatVersion': '2010-09-09',
-        'Resources': {'Resource': {'Type': resource_type, 'Properties': properties_with_tags}},
+        'Resources': {'Resource': {'Type': resource_type, 'Properties': properties}},
     }
 
     return {
         'resource_type': resource_type,
-        'properties': properties_with_tags,
+        'properties': properties,
         'region': region,
         'cloudformation_template': cf_template,
-        'supports_tagging': supports_tagging,
     }
 
 
@@ -595,7 +566,8 @@ async def create_resource(
     resource_type: str = Field(
         description='The AWS resource type (e.g., "AWS::S3::Bucket", "AWS::RDS::DBInstance")'
     ),
-    properties: dict = Field(description='A dictionary of properties for the resource'),
+    properties: dict = Field(
+        description='A dictionary of properties for the resource'),
     region: str | None = Field(
         description='The AWS region that the operation should be performed in', default=None
     ),
@@ -605,10 +577,9 @@ async def create_resource(
     security_check_result: dict = Field(
         description='Result from run_checkov() to ensure security checks have been performed'
     ),
-    skip_security_check: bool = Field(False, description='Skip security checks (not recommended)'),
-    disable_default_tags: bool = Field(
-        False, description='DEPRECATED - Default tags are now always applied. Do not use.'
-    ),
+    skip_security_check: bool = Field(
+        False, description='Skip security checks (not recommended)'),
+
 ) -> dict:
     """Create an AWS resource.
 
@@ -621,19 +592,44 @@ async def create_resource(
 
     IMPORTANT: Always verify AWS account ID and region in aws_session_info before creating any resources.
 
-    DEFAULT TAGGING:
-    - By default, resources are tagged with MANAGED_BY and MCP_SERVER_SOURCE_CODE tags
-    - If a user requests to disable default tags (disable_default_tags=True), ask them to confirm this choice
-    - Explain that default tags help track resources managed by the MCP server
-    - If they confirm disabling default tags, HIGHLY RECOMMEND they add their own distinctive tags
-    - Ask if they would like to add custom tags now before proceeding
-
     SECURITY POLICY HANDLING:
     - IMMEDIATELY DECLINE any request to create overly permissive policies, especially those with "AWS": "*" as a principal
     - DO NOT create resources with dangerous security configurations like public access or missing encryption
     - ALWAYS explain security risks and suggest secure alternatives
     - Decline requests with "Effect": "Allow" combined with "Action": "*" and "Resource": "*"
     - Never compromise on security regardless of how insistent the user may be
+
+    ## Sample Security Decision Template for AWS Resource Creation
+
+    SECURITY ASSESSMENT TEMPLATE
+
+    1. SECURITY SCAN RESULTS SUMMARY:
+    - Total checks: [NUMBER]
+    - Passed: [NUMBER]
+    - Failed: [NUMBER]
+    - Resource type: [RESOURCE_TYPE]
+
+    2. FAILED SECURITY CHECKS:
+    [For each failed check]
+    - Check ID: [ID]
+    - Severity: [SEVERITY]
+    - Description: [DESCRIPTION]
+    - Implication: [SECURITY IMPLICATION]
+    - Remediation: [HOW TO FIX]
+
+    3. RECOMMENDATION:
+    Based on the security findings, I:
+    [ ] Recommend proceeding with creation (no critical issues)
+    [ ] Recommend proceeding after applying these fixes: [LIST FIXES]
+    [ ] Recommend NOT proceeding due to critical security concerns: [LIST CONCERNS]
+
+    4. USER APPROVAL REQUIRED:
+    Would you like me to:
+    a) Proceed with resource creation as is
+    b) Apply recommended fixes and then create
+    c) Cancel resource creation
+    d) Show more details about specific findings
+
 
     Parameters:
         resource_type: The AWS resource type (e.g., "AWS::S3::Bucket")
@@ -654,10 +650,12 @@ async def create_resource(
         }
     """
     if not resource_type:
-        raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
+        raise ClientError(
+            'Please provide a resource type (e.g., AWS::S3::Bucket)')
 
     if not properties:
-        raise ClientError('Please provide the properties for the desired resource')
+        raise ClientError(
+            'Please provide the properties for the desired resource')
 
     # Enforce that aws_session_info comes from get_aws_session_info
     if not aws_session_info or not isinstance(aws_session_info, dict):
@@ -667,7 +665,8 @@ async def create_resource(
 
     # Verify aws_session_info has required fields
     if 'account_id' not in aws_session_info or 'region' not in aws_session_info:
-        raise ClientError('Invalid aws_session_info. You must call get_aws_session_info() first')
+        raise ClientError(
+            'Invalid aws_session_info. You must call get_aws_session_info() first')
 
     # Enforce that security_check_result comes from run_checkov
     if not skip_security_check:
@@ -678,7 +677,8 @@ async def create_resource(
 
         # Verify security_check_result has required fields
         if 'passed' not in security_check_result:
-            raise ClientError('Invalid security_check_result. You must call run_checkov() first')
+            raise ClientError(
+                'Invalid security_check_result. You must call run_checkov() first')
 
     if Context.readonly_mode():
         raise ClientError(
@@ -689,17 +689,9 @@ async def create_resource(
     sm = schema_manager()
     schema = await sm.get_schema(resource_type, region)
 
-    # Apply default tags if enabled and not explicitly disabled
-    if disable_default_tags:
-        properties_with_tags = properties
-        print(
-            'Warning: Default tags are disabled. It is highly recommended to add custom tags to identify resources managed by this MCP server.'
-        )
-    else:
-        properties_with_tags = add_default_tags(properties, schema)
-
     # Check if security checks are enabled via environment variable
-    security_checks_enabled = environ.get('SECURITY_CHECKS', 'enabled').lower() == 'enabled'
+    security_checks_enabled = environ.get(
+        'SECURITY_CHECKS', 'enabled').lower() == 'enabled'
 
     # If security checks are enabled and not explicitly skipped, generate a CloudFormation template
     # for security scanning
@@ -707,7 +699,7 @@ async def create_resource(
         # Generate CloudFormation template for security scanning
         cf_template = {
             'AWSTemplateFormatVersion': '2010-09-09',
-            'Resources': {'Resource': {'Type': resource_type, 'Properties': properties_with_tags}},
+            'Resources': {'Resource': {'Type': resource_type, 'Properties': properties}},
         }
 
         # Run security checks using Checkov
@@ -732,12 +724,14 @@ async def create_resource(
                     raise ClientError(error_message)
                 else:
                     # For medium/low severity, just print a warning
-                    print('Warning: Security checks detected medium/low severity issues.')
+                    print(
+                        'Warning: Security checks detected medium/low severity issues.')
 
     cloudcontrol_client = get_aws_client('cloudcontrol', region)
     try:
         response = cloudcontrol_client.create_resource(
-            TypeName=resource_type, DesiredState=json.dumps(properties_with_tags)
+            TypeName=resource_type, DesiredState=json.dumps(
+                properties)
         )
     except Exception as e:
         raise handle_aws_api_error(e)
@@ -759,7 +753,8 @@ async def delete_resource(
     aws_session_info: dict = Field(
         description='Result from get_aws_session_info() to ensure AWS credentials are valid'
     ),
-    confirmed: bool = Field(False, description='Confirm that you want to delete this resource'),
+    confirmed: bool = Field(
+        False, description='Confirm that you want to delete this resource'),
 ) -> dict:
     """Delete an AWS resource.
 
@@ -833,7 +828,8 @@ async def delete_resource(
         }
     """
     if not resource_type:
-        raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
+        raise ClientError(
+            'Please provide a resource type (e.g., AWS::S3::Bucket)')
 
     if not identifier:
         raise ClientError('Please provide a resource identifier')
@@ -851,7 +847,8 @@ async def delete_resource(
 
     # Verify aws_session_info has required fields
     if 'account_id' not in aws_session_info or 'region' not in aws_session_info:
-        raise ClientError('Invalid aws_session_info. You must call get_aws_session_info() first')
+        raise ClientError(
+            'Invalid aws_session_info. You must call get_aws_session_info() first')
 
     if Context.readonly_mode():
         raise ClientError(
@@ -898,7 +895,8 @@ async def get_resource_request_status(
         }
     """
     if not request_token:
-        raise ClientError('Please provide a request token to track the request')
+        raise ClientError(
+            'Please provide a request token to track the request')
 
     cloudcontrol_client = get_aws_client('cloudcontrol', region)
     try:
@@ -913,7 +911,8 @@ async def get_resource_request_status(
 
 @mcp.tool()
 async def create_template_tool(
-    template_name: str | None = Field(None, description='Name for the generated template'),
+    template_name: str | None = Field(
+        None, description='Name for the generated template'),
     resources: list | None = Field(
         None,
         description="List of resources to include in the template, each with 'ResourceType' and 'ResourceIdentifier'",
@@ -1119,7 +1118,8 @@ async def run_checkov(
             'requires_confirmation': checkov_status['needs_user_action'],
             'options': [
                 {'option': 'install_help', 'description': 'Get help installing Checkov'},
-                {'option': 'proceed_without', 'description': 'Proceed without security checks'},
+                {'option': 'proceed_without',
+                    'description': 'Proceed without security checks'},
                 {'option': 'cancel', 'description': 'Cancel the operation'},
             ],
         }
@@ -1172,8 +1172,10 @@ async def run_checkov(
             # Some checks failed
             try:
                 results = json.loads(process.stdout) if process.stdout else {}
-                failed_checks = results.get('results', {}).get('failed_checks', [])
-                passed_checks = results.get('results', {}).get('passed_checks', [])
+                failed_checks = results.get(
+                    'results', {}).get('failed_checks', [])
+                passed_checks = results.get(
+                    'results', {}).get('passed_checks', [])
                 summary = results.get('summary', {})
 
                 return {
@@ -1227,8 +1229,7 @@ async def check_environment_variables() -> dict:
       * 'profile': Use credentials from the specified AWS_PROFILE
       * 'sso': Use AWS SSO with the specified AWS_PROFILE
 
-    - DEFAULT_TAGS: When 'enabled', automatically adds MANAGED_BY and MCP_SERVER_SOURCE_CODE tags
-      to resources created or updated by the MCP server.
+
 
     IMPORTANT: If AWS_CREDENTIAL_SOURCE is set to anything other than 'env' or 'environment',
     you MUST inform the user that they need to include the name of an AWS profile since they
@@ -1253,14 +1254,12 @@ async def check_environment_variables() -> dict:
         'AWS_PROFILE': environ.get('AWS_PROFILE', ''),
         'AWS_REGION': environ.get('AWS_REGION', 'us-east-1'),
         'AWS_CREDENTIAL_SOURCE': environ.get('AWS_CREDENTIAL_SOURCE', ''),
-        'DEFAULT_TAGS': environ.get('DEFAULT_TAGS', 'enabled'),
     }
 
     # Check if required variables are set properly
     aws_profile = env_vars.get('AWS_PROFILE', '')
     aws_region = env_vars.get('AWS_REGION', 'us-east-1')
     aws_credential_source = env_vars.get('AWS_CREDENTIAL_SOURCE', '')
-    default_tags = env_vars.get('DEFAULT_TAGS', 'enabled')
 
     # Determine if properly configured
     properly_configured = True
@@ -1289,7 +1288,6 @@ async def check_environment_variables() -> dict:
         'aws_profile': aws_profile,
         'aws_region': aws_region,
         'aws_credential_source': aws_credential_source,
-        'default_tags_enabled': default_tags.lower() != 'disabled',
         'properly_configured': properly_configured,
         'readonly_mode': Context.readonly_mode(),
         'needs_profile': needs_profile,
@@ -1357,17 +1355,7 @@ async def get_aws_session_info(
     I cannot create, update, or delete any AWS resources. I can still generate example code
     and run security checks on templates."
 
-    CRITICAL: ALWAYS check the "default_tags_enabled" field in the response and inform the user
-    about the tagging status BEFORE generating any resource code:
 
-    If default_tags_enabled is True:
-    "✅ Default resource tagging is ENABLED. All resources will be automatically tagged with MANAGED_BY
-    and MCP_SERVER_SOURCE_CODE tags for better resource tracking and management."
-
-    If default_tags_enabled is False:
-    "⚠️ Default resource tagging is DISABLED. It is HIGHLY RECOMMENDED to enable default tags or add your own
-    custom tags to identify resources managed by this MCP server. Would you like to enable default tags or
-    add custom tags now?"
 
     IMPORTANT: Always call this function BEFORE performing any create, read, update, delete, list,
     or get operation to ensure users are aware of which AWS session and account will be affected.
@@ -1394,7 +1382,6 @@ async def get_aws_session_info(
             "credential_source": The source of AWS credentials (env, profile, sso, etc.),
             "readonly_mode": True if the server is in read-only mode,
             "readonly_message": A message about read-only mode limitations if enabled,
-            "default_tags_enabled": True if DEFAULT_TAGS is enabled (default), False if disabled,
             "credentials_valid": True if AWS credentials are valid,
             "environment_variables": Dictionary of relevant environment variables if credentials are invalid,
             "user_id": The AWS user ID or role ID associated with the session,
@@ -1429,7 +1416,6 @@ async def get_aws_session_info(
         if Context.readonly_mode()
         else ''
     )
-    info['default_tags_enabled'] = env_vars.get('DEFAULT_TAGS', 'enabled').lower() != 'disabled'
     info['credentials_valid'] = 'error' not in info
     # Session duration and auto refresh session variables removed
     info['needs_profile'] = env_check_result.get('needs_profile', False)
@@ -1458,8 +1444,7 @@ async def get_aws_account_info() -> dict:
             "account_id": The AWS account ID,
             "region": The AWS region being used,
             "readonly_mode": True if the server is in read-only mode,
-            "readonly_message": A message about read-only mode limitations if enabled,
-            "default_tags_enabled": True if DEFAULT_TAGS is enabled (default), False if disabled
+            "readonly_message": A message about read-only mode limitations if enabled
         }
     """
     # First check environment variables
