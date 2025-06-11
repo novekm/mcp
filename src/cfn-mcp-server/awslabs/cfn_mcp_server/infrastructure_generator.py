@@ -19,46 +19,23 @@ from awslabs.cfn_mcp_server.aws_client import get_aws_client
 from awslabs.cfn_mcp_server.cloud_control_utils import add_default_tags, validate_patch
 from awslabs.cfn_mcp_server.errors import ClientError, handle_aws_api_error
 from awslabs.cfn_mcp_server.schema_manager import schema_manager
+from typing import Dict, List
 
 
 async def generate_infrastructure_code(
     resource_type: str,
-    properties: dict = None,
-    identifier: str = None,
-    patch_document: list = None,
-    region: str = None,
+    properties: Dict = {},
+    identifier: str = '',
+    patch_document: List = [],
+    region: str = '',
     disable_default_tags: bool = False,
-) -> dict:
-    """Generate infrastructure code for security scanning before resource creation or update.
-
-    This function generates CloudFormation templates for security scanning before actual resource
-    creation or update operations. It handles both new resource creation and updates to existing
-    resources, providing a consistent interface for security scanning.
-
-    Args:
-        resource_type: The AWS resource type (e.g., "AWS::S3::Bucket")
-        properties: A dictionary of properties for new resource creation
-        identifier: The primary identifier of an existing resource to update
-        patch_document: A list of RFC 6902 JSON Patch operations to apply for updates
-        region: AWS region to use (e.g., "us-east-1", "us-west-2")
-        disable_default_tags: Disable default tagging (not recommended)
-
-    Returns:
-        A dictionary containing the generated code and metadata:
-        {
-            "resource_type": The AWS resource type,
-            "operation": "create" or "update",
-            "properties": The validated properties for the resource,
-            "region": The AWS region for the resource,
-            "cloudformation_template": A CloudFormation template representation for security scanning,
-            "supports_tagging": Boolean indicating if the resource type supports tagging
-        }
-    """
+) -> Dict:
+    """Generate infrastructure code for security scanning before resource creation or update."""
     if not resource_type:
         raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
 
     # Determine if this is a create or update operation
-    is_update = identifier is not None and (patch_document is not None or properties is not None)
+    is_update = identifier != '' and (patch_document or properties)
 
     # Validate the resource type against the schema
     sm = schema_manager()

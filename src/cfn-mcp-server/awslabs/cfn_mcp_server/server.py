@@ -25,6 +25,7 @@ from awslabs.cfn_mcp_server.cloud_control_utils import progress_event, validate_
 from awslabs.cfn_mcp_server.context import Context
 from awslabs.cfn_mcp_server.errors import ClientError, handle_aws_api_error
 from awslabs.cfn_mcp_server.iac_generator import create_template as create_template_impl
+from awslabs.cfn_mcp_server.infrastructure_generator import generate_infrastructure_code
 from awslabs.cfn_mcp_server.schema_manager import schema_manager
 from mcp.server.fastmcp import FastMCP
 from os import environ
@@ -255,12 +256,14 @@ async def get_resource(
         if analyze_security:
             # Generate infrastructure code
             code = await generate_infrastructure_code(
-                resource_type=resource_type, identifier=identifier, region=region
+                resource_type=resource_type,
+                identifier=identifier,
+                region=region,
             )
 
             # Run security scan
             security_result = await run_checkov(
-                content=code['cloudformation_template'],
+                content=json.dumps(code['cloudformation_template']),
                 file_type='json',
                 framework='cloudformation',
                 resource_type=resource_type,
@@ -747,139 +750,7 @@ async def get_resource_request_status(
     return progress_event(response['ProgressEvent'], response.get('HooksProgressEvent', None))
 
 
-@mcp.tool()
-async def generate_infrastructure_code(
-    resource_type: str = Field(
-        description='The AWS resource type (e.g., "AWS::S3::Bucket", "AWS::RDS::DBInstance")'
-    ),
-    properties: dict | None = Field(
-        description='A dictionary of properties for resource creation', default=None
-    ),
-    identifier: str | None = Field(
-        description='The primary identifier of an existing resource to update', default=None
-    ),
-    patch_document: list | None = Field(
-        description='A list of RFC 6902 JSON Patch operations to apply for updates', default=None
-    ),
-    region: str | None = Field(
-        description='The AWS region that the operation should be performed in', default=None
-    ),
-    disable_default_tags: bool = Field(
-        False, description='Disable default tagging (not recommended)'
-    ),
-) -> dict:
-    """Generate infrastructure code for security scanning before resource creation or update.
-
-    This tool generates CloudFormation templates for security scanning before actual resource
-    creation or update operations. It handles both new resource creation and updates to existing
-    resources, providing a consistent interface for security scanning.
-
-    IMPORTANT: This tool should be called BEFORE any resource creation or update operation
-    to generate code that can be security scanned with run_checkov().
-
-    Parameters:
-        resource_type: The AWS resource type (e.g., "AWS::S3::Bucket")
-        properties: A dictionary of properties for new resource creation
-        identifier: The primary identifier of an existing resource to update
-        patch_document: A list of RFC 6902 JSON Patch operations to apply for updates
-        region: AWS region to use (e.g., "us-east-1", "us-west-2")
-        disable_default_tags: Disable default tagging (not recommended)
-
-    Returns:
-        A dictionary containing the generated code and metadata:
-        {
-            "resource_type": The AWS resource type,
-            "operation": "create" or "update",
-            "properties": The validated properties for the resource,
-            "region": The AWS region for the resource,
-            "cloudformation_template": A CloudFormation template representation for security scanning,
-            "supports_tagging": Boolean indicating if the resource type supports tagging
-        }
-    """
-    if not resource_type:
-        raise ClientError('Please provide a resource type (e.g., AWS::S3::Bucket)')
-
-    # Determine if this is a create or update operation
-    is_update = identifier is not None and (patch_document is not None or properties is not None)
-
-    # Validate the resource type against the schema
-    sm = schema_manager()
-    schema = await sm.get_schema(resource_type, region)
-
-    # Check if resource supports tagging
-    supports_tagging = 'Tags' in schema.get('properties', {})
-
-    if is_update:
-        # This is an update operation
-        if not identifier:
-            raise ClientError('Please provide a resource identifier for update operations')
-
-        # Get the current resource state
-        cloudcontrol_client = get_aws_client('cloudcontrol', region)
-        try:
-            current_resource = cloudcontrol_client.get_resource(
-                TypeName=resource_type, Identifier=identifier
-            )
-            current_properties = json.loads(current_resource['ResourceDescription']['Properties'])
-        except Exception as e:
-            raise handle_aws_api_error(e)
-
-        # If patch_document is provided, validate it
-        if patch_document:
-            validate_patch(patch_document)
-            # Note: In a real implementation, you would apply the patch to current_properties
-            # For simplicity, we'll just use the current properties
-            properties_with_tags = current_properties
-        else:
-            # If properties are provided directly for update
-            properties_with_tags = properties if properties else current_properties
-
-        operation = 'update'
-    else:
-        # This is a create operation
-        if not properties:
-            raise ClientError('Please provide the properties for the desired resource')
-
-        # Apply default tags if enabled and not explicitly disabled
-        if disable_default_tags:
-            properties_with_tags = properties
-            print(
-                'Warning: Default tags are disabled. It is highly recommended to add custom tags to identify resources managed by this MCP server.'
-            )
-        else:
-            # Simple implementation of add_default_tags
-            properties_with_tags = properties.copy()
-            if supports_tagging and 'Tags' not in properties_with_tags:
-                properties_with_tags['Tags'] = []
-            if supports_tagging:
-                tags = properties_with_tags.get('Tags', [])
-                # Add default tags if they don't exist
-                managed_by_exists = any(tag.get('Key') == 'MANAGED_BY' for tag in tags)
-                source_exists = any(tag.get('Key') == 'MCP_SERVER_SOURCE_CODE' for tag in tags)
-
-                if not managed_by_exists:
-                    tags.append({'Key': 'MANAGED_BY', 'Value': 'CFN-MCP-SERVER'})
-                if not source_exists:
-                    tags.append({'Key': 'MCP_SERVER_SOURCE_CODE', 'Value': 'TRUE'})
-
-                properties_with_tags['Tags'] = tags
-
-        operation = 'create'
-
-    # Generate a CloudFormation template representation for security scanning
-    cf_template = {
-        'AWSTemplateFormatVersion': '2010-09-09',
-        'Resources': {'Resource': {'Type': resource_type, 'Properties': properties_with_tags}},
-    }
-
-    return {
-        'resource_type': resource_type,
-        'operation': operation,
-        'properties': properties_with_tags,
-        'region': region,
-        'cloudformation_template': cf_template,
-        'supports_tagging': supports_tagging,
-    }
+# This function is now imported from infrastructure_generator.py
 
 
 @mcp.tool()
