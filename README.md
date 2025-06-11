@@ -46,8 +46,10 @@ A suite of specialized MCP servers that help you get the most out of AWS, wherev
     - [Amazon EKS MCP Server](#amazon-eks-mcp-server)
     - [AWS Serverless MCP Server](#aws-serverless-mcp-server)
     - [Amazon ECS MCP Server](#amazon-ecs-mcp-server)
+    - [AWS Cost Explorer MCP Server](#aws-cost-explorer-mcp-server)
     - [Finch MCP Server](#finch-mcp-server)
     - [AWS Bedrock Data Automation MCP Server](#aws-bedrock-data-automation-mcp-server)
+    - [AWS Timestream for InfluxDB MCP Server](#amazon-timestream-for-influxdb-mcp-server)
     - [Use Cases for the Servers](#use-cases-for-the-servers)
   - [Installation and Setup](#installation-and-setup)
     - [Running MCP servers in containers](#running-mcp-servers-in-containers)
@@ -535,6 +537,21 @@ A server for interacting with AWS Serverless
 
 [Learn more](src/aws-serverless-mcp-server/README.md) | [Documentation](https://awslabs.github.io/mcp/servers/aws-serverless-mcp-server/)
 
+### AWS Cost Explorer MCP Server
+
+[![PyPI version](https://img.shields.io/pypi/v/awslabs.cost-explorer-mcp-server.svg)](https://pypi.org/project/awslabs.cost-explorer-mcp-server/)
+
+A server for interacting with AWS Cost Explorer
+
+- Get detailed breakdowns of AWS costs by service, region, and other dimensions
+- Understand how costs are distributed across various services
+- Query historical cost data for specific time periods
+- Filter costs by various dimensions, tags, and cost categories
+- Ask natural language questions about their AWS costs
+- Generate comprehensive cost reports based on AWS Cost Explorer data
+
+[Learn more](src/cost-explorer-mcp-server/README.md) | [Documentation](https://awslabs.github.io/mcp/servers/cost-explorer-mcp-server/)
+
 ### AWS Bedrock Data Automation MCP Server
 
 [![PyPI version](https://img.shields.io/pypi/v/awslabs.aws-bedrock-data-automation-mcp-server.svg)](https://pypi.org/project/awslabs.aws-bedrock-data-automation-mcp-server/)
@@ -547,6 +564,21 @@ A Model Context Protocol (MCP) server for Amazon Bedrock Data Automation that en
 - Integration with Amazon S3: Seamlessly upload and download assets and results
 
 [Learn more](src/aws-bedrock-data-automation-mcp-server/README.md) | [Documentation](https://awslabs.github.io/mcp/servers/aws-bedrock-data-automation-mcp-server/)
+
+### Amazon Timestream for InfluxDB MCP server
+[![PyPI version](https://img.shields.io/pypi/v/awslabs.timestream-for-influxdb-mcp-server.svg)](https://pypi.org/project/awslabs.timestream-for-influxdb-mcp-server/)
+
+A Model Context Protocol (MCP) server for Amazon Timestream for InfluxDB that enables AI assistants to help create, list, store, and query
+time-series data using InfluxDB.
+
+**Features**
+- Create, update, list, describe, and delete Timestream for InfluxDB database instances
+- Create, update, list, describe, and delete Timestream for InfluxDB database clusters
+- Manage DB parameter groups
+- Tag management for Timestream for InfluxDB resources
+- Write and query data using InfluxDB's APIs
+
+[Learn more](src/timestream-for-influxdb-mcp-server/README.md) | [Documentation](https://awslabs.github.io/mcp/servers/timestream-for-influxdb-mcp-server/)
 
 ## MCP AWS Lambda Handler Module
 
@@ -561,6 +593,7 @@ A Python library for creating serverless HTTP handlers for the Model Context Pro
 - Example implementations and tests
 
 See [`src/mcp-lambda-handler/README.md`](src/mcp-lambda-handler/README.md) for full usage, installation, and development instructions.
+
 
 ## Use Cases for the Servers
 
