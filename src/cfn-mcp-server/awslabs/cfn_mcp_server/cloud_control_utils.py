@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 from awslabs.cfn_mcp_server.errors import ClientError
 from typing import Any, Dict, List
 
@@ -20,6 +21,11 @@ def add_default_tags(properties: Dict, schema: Dict) -> Dict:
     """Add default tags to resource properties if the resource supports tagging."""
     if not properties:
         return {}
+
+    # Check if default tagging is enabled via environment variable
+    default_tagging_enabled = os.environ.get('DEFAULT_TAGGING', '').lower() == 'true'
+    if not default_tagging_enabled:
+        return properties.copy()
 
     properties_with_tags = properties.copy()
     supports_tagging = 'Tags' in schema.get('properties', {})
@@ -34,9 +40,9 @@ def add_default_tags(properties: Dict, schema: Dict) -> Dict:
         source_exists = any(tag.get('Key') == 'MCP_SERVER_SOURCE_CODE' for tag in tags)
 
         if not managed_by_exists:
-            tags.append({'Key': 'MANAGED_BY', 'Value': 'CFN-MCP-SERVER'})
+            tags.append({'Key': 'MANAGED_BY', 'Value': 'CCAPI-MCP-SERVER'})
         if not source_exists:
-            tags.append({'Key': 'MCP_SERVER_SOURCE_CODE', 'Value': 'TRUE'})
+            tags.append({'Key': 'MCP_SERVER_SOURCE_CODE', 'Value': 'https://github.com/awslabs/mcp/tree/main/src/ccapi-mcp-server'})
 
         properties_with_tags['Tags'] = tags
 

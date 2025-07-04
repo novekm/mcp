@@ -206,21 +206,29 @@ class TestUtils:
 
     async def test_add_default_tags_empty_properties(self):
         """Test add_default_tags with empty properties."""
+        import os
+        os.environ['DEFAULT_TAGGING'] = 'true'
         properties = {}
         schema = {'properties': {'Tags': {}}}
         result = add_default_tags(properties, schema)
         assert result == {}
+        del os.environ['DEFAULT_TAGGING']
 
     async def test_add_default_tags_no_tag_support(self):
         """Test add_default_tags with resource that doesn't support tags."""
+        import os
+        os.environ['DEFAULT_TAGGING'] = 'true'
         properties = {'Name': 'test-resource'}
         schema = {'properties': {}}
         result = add_default_tags(properties, schema)
         assert result == {'Name': 'test-resource'}
         assert 'Tags' not in result
+        del os.environ['DEFAULT_TAGGING']
 
     async def test_add_default_tags_with_existing_tags(self):
         """Test add_default_tags with existing tags."""
+        import os
+        os.environ['DEFAULT_TAGGING'] = 'true'
         properties = {'Name': 'test-resource', 'Tags': [{'Key': 'MANAGED_BY', 'Value': 'CUSTOM'}]}
         schema = {'properties': {'Tags': {}}}
         result = add_default_tags(properties, schema)
@@ -228,21 +236,27 @@ class TestUtils:
         assert result['Name'] == 'test-resource'
         assert len(result['Tags']) == 2
         assert {'Key': 'MANAGED_BY', 'Value': 'CUSTOM'} in result['Tags']
-        assert {'Key': 'MCP_SERVER_SOURCE_CODE', 'Value': 'TRUE'} in result['Tags']
+        assert {'Key': 'MCP_SERVER_SOURCE_CODE', 'Value': 'https://github.com/awslabs/mcp/tree/main/src/ccapi-mcp-server'} in result['Tags']
+        del os.environ['DEFAULT_TAGGING']
 
     async def test_add_default_tags_no_existing_tags(self):
         """Test add_default_tags with no existing tags."""
+        import os
+        os.environ['DEFAULT_TAGGING'] = 'true'
         properties = {'Name': 'test-resource'}
         schema = {'properties': {'Tags': {}}}
         result = add_default_tags(properties, schema)
 
         assert result['Name'] == 'test-resource'
         assert len(result['Tags']) == 2
-        assert {'Key': 'MANAGED_BY', 'Value': 'CFN-MCP-SERVER'} in result['Tags']
-        assert {'Key': 'MCP_SERVER_SOURCE_CODE', 'Value': 'TRUE'} in result['Tags']
+        assert {'Key': 'MANAGED_BY', 'Value': 'CCAPI-MCP-SERVER'} in result['Tags']
+        assert {'Key': 'MCP_SERVER_SOURCE_CODE', 'Value': 'https://github.com/awslabs/mcp/tree/main/src/ccapi-mcp-server'} in result['Tags']
+        del os.environ['DEFAULT_TAGGING']
 
     async def test_add_default_tags_with_all_existing_tags(self):
         """Test add_default_tags with all default tags already present."""
+        import os
+        os.environ['DEFAULT_TAGGING'] = 'true'
         properties = {
             'Name': 'test-resource',
             'Tags': [
@@ -257,3 +271,15 @@ class TestUtils:
         assert len(result['Tags']) == 2
         assert {'Key': 'MANAGED_BY', 'Value': 'CUSTOM'} in result['Tags']
         assert {'Key': 'MCP_SERVER_SOURCE_CODE', 'Value': 'CUSTOM'} in result['Tags']
+        del os.environ['DEFAULT_TAGGING']
+
+    async def test_add_default_tags_disabled(self):
+        """Test add_default_tags when DEFAULT_TAGGING is disabled."""
+        import os
+        os.environ.pop('DEFAULT_TAGGING', None)  # Ensure it's not set
+        properties = {'Name': 'test-resource'}
+        schema = {'properties': {'Tags': {}}}
+        result = add_default_tags(properties, schema)
+
+        assert result == {'Name': 'test-resource'}
+        assert 'Tags' not in result
