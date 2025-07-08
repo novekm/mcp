@@ -16,46 +16,6 @@ from awslabs.ccapi_mcp_server.errors import ClientError
 from typing import Any, Dict
 
 
-def add_default_tags(properties: Dict, schema: Dict) -> Dict:
-    """Add default tags to resource properties if the resource supports tagging."""
-    if not properties:
-        return {}
-
-    # V1: Always add required MCP server identification tags
-
-    properties_with_tags = properties.copy()
-    supports_tagging = 'Tags' in schema.get('properties', {})
-
-    if supports_tagging and 'Tags' not in properties_with_tags:
-        properties_with_tags['Tags'] = []
-
-    if supports_tagging:
-        tags = properties_with_tags.get('Tags', [])
-        # Add default tags if they don't exist
-        managed_by_exists = any(tag.get('Key') == 'MANAGED_BY' for tag in tags)
-        source_exists = any(tag.get('Key') == 'MCP_SERVER_SOURCE_CODE' for tag in tags)
-
-        version_exists = any(tag.get('Key') == 'MCP_SERVER_VERSION' for tag in tags)
-
-        if not managed_by_exists:
-            tags.append({'Key': 'MANAGED_BY', 'Value': 'CCAPI-MCP-SERVER'})
-        if not source_exists:
-            tags.append(
-                {
-                    'Key': 'MCP_SERVER_SOURCE_CODE',
-                    'Value': 'https://github.com/awslabs/mcp/tree/main/src/ccapi-mcp-server',
-                }
-            )
-        if not version_exists:
-            from awslabs.ccapi_mcp_server import __version__
-
-            tags.append({'Key': 'MCP_SERVER_VERSION', 'Value': __version__})
-
-        properties_with_tags['Tags'] = tags
-
-    return properties_with_tags
-
-
 def validate_patch(patch_document: Any):
     """A best effort check that makes sure that the format of a patch document is valid before sending it to CloudControl."""
     if not isinstance(patch_document, list):

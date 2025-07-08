@@ -202,23 +202,3 @@ class TestInfrastructureGenerator:
                 properties={'BucketName': 'test'},
                 region='us-east-1',
             )
-
-    @patch('awslabs.ccapi_mcp_server.infrastructure_generator.schema_manager')
-    @patch('awslabs.ccapi_mcp_server.infrastructure_generator.add_default_tags')
-    async def test_generate_infrastructure_code_tag_error_lines(
-        self, mock_tags, mock_schema_manager
-    ):
-        """Test generate_infrastructure_code with tag error - covers lines 70, 80-81."""
-        from awslabs.ccapi_mcp_server.infrastructure_generator import generate_infrastructure_code
-
-        mock_instance = MagicMock()
-        mock_instance.get_schema = AsyncMock(return_value={'properties': {}})
-        mock_schema_manager.return_value = mock_instance
-        mock_tags.side_effect = Exception('Tag error')
-
-        with pytest.raises(Exception):
-            await generate_infrastructure_code(
-                resource_type='AWS::S3::Bucket',
-                properties={'BucketName': 'test'},
-                region='us-east-1',
-            )

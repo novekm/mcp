@@ -16,7 +16,7 @@
 
 import json
 from awslabs.ccapi_mcp_server.aws_client import get_aws_client
-from awslabs.ccapi_mcp_server.cloud_control_utils import add_default_tags, validate_patch
+from awslabs.ccapi_mcp_server.cloud_control_utils import validate_patch
 from awslabs.ccapi_mcp_server.errors import ClientError, handle_aws_api_error
 from awslabs.ccapi_mcp_server.schema_manager import schema_manager
 from typing import Dict, List
@@ -74,8 +74,8 @@ async def generate_infrastructure_code(
         if not properties:
             raise ClientError('Please provide the properties for the desired resource')
 
-        # V1: Always add required MCP server identification tags
-        properties_with_tags = add_default_tags(properties, schema)
+        # Use properties as provided
+        properties_with_tags = properties
 
         operation = 'create'
 

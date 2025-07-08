@@ -53,9 +53,8 @@ class TestTools:
         with pytest.raises(ClientError):
             await create_resource(
                 resource_type=None,
-                aws_session_info={'account_id': 'test'},
-                checkov_validation_token='token',
                 properties_token='token',
+                aws_session_info={'account_id': 'test'},
             )
 
     @pytest.mark.asyncio
@@ -64,7 +63,13 @@ class TestTools:
         from awslabs.ccapi_mcp_server.server import update_resource
 
         with pytest.raises(ClientError):
-            await update_resource(resource_type=None, identifier='id', patch_document=[])
+            await update_resource(
+                resource_type=None,
+                identifier='id',
+                patch_document=[],
+                properties_token='token',
+                aws_session_info={'account_id': 'test', 'region': 'us-east-1'},
+            )
 
     @pytest.mark.asyncio
     async def test_delete_resource_no_type(self):
@@ -106,44 +111,6 @@ class TestTools:
         assert result['account_id'] == '123456789012'
         assert result['credentials_valid']
 
-    @patch('awslabs.ccapi_mcp_server.server.subprocess.run')
-    @pytest.mark.asyncio
-    async def test_run_checkov_success(self, mock_subprocess):
-        """Test successful Checkov run."""
-        from awslabs.ccapi_mcp_server.server import run_checkov
-
-        mock_process = MagicMock()
-        mock_process.returncode = 0
-        mock_process.stdout = '{"results": {"passed_checks": [], "failed_checks": []}}'
-        mock_subprocess.return_value = mock_process
-
-        content = '{"Resources": {"TestBucket": {"Type": "AWS::S3::Bucket"}}}'
-
-        result = await run_checkov(content=content, file_type='json', framework='cloudformation')
-
-        assert result['passed']
-        assert 'checkov_validation_token' in result
-
-    @patch('awslabs.ccapi_mcp_server.server.subprocess.run')
-    @pytest.mark.asyncio
-    async def test_run_checkov_failed(self, mock_subprocess):
-        """Test failed Checkov run."""
-        from awslabs.ccapi_mcp_server.server import run_checkov
-
-        mock_process = MagicMock()
-        mock_process.returncode = 1
-        mock_process.stdout = (
-            '{"results": {"passed_checks": [], "failed_checks": [{"check_id": "CKV_AWS_18"}]}}'
-        )
-        mock_subprocess.return_value = mock_process
-
-        content = '{"Resources": {"TestBucket": {"Type": "AWS::S3::Bucket"}}}'
-
-        result = await run_checkov(content=content, file_type='json')
-
-        assert not result['passed']
-        assert len(result['failed_checks']) == 1
-
     @patch('awslabs.ccapi_mcp_server.server.check_environment_variables')
     @pytest.mark.asyncio
     async def test_check_environment_variables_success(self, mock_check):
@@ -163,7 +130,7 @@ class TestTools:
 
     @pytest.mark.asyncio
     async def test_update_resource_validation_paths(self):
-        """Test update_resource validation paths - lines 447-473."""
+        """Test update_resource validation paths."""
         from awslabs.ccapi_mcp_server.server import update_resource
 
         # Test missing account_id in session info
@@ -173,19 +140,6 @@ class TestTools:
                 identifier='test',
                 patch_document=[{'op': 'add', 'path': '/test', 'value': 'test'}],
                 aws_session_info={'region': 'us-east-1'},
-                checkov_validation_token='token',
-                properties_token='token',
-            )
-
-        # Test missing security token
-        with pytest.raises(ClientError):
-            await update_resource(
-                resource_type='AWS::S3::Bucket',
-                identifier='test',
-                patch_document=[{'op': 'add', 'path': '/test', 'value': 'test'}],
-                aws_session_info={'account_id': '123', 'region': 'us-east-1'},
-                checkov_validation_token='',
-                properties_token='token',
             )
 
     @patch('awslabs.ccapi_mcp_server.server.get_aws_client')
@@ -206,17 +160,6 @@ class TestTools:
             assert 'security_analysis' in result
 
     @pytest.mark.asyncio
-    async def test_generate_infrastructure_code_validation(self):
-        """Test generate_infrastructure_code validation paths."""
-        from awslabs.ccapi_mcp_server.server import generate_infrastructure_code
-
-        # Test invalid session info
-        with pytest.raises(ClientError):
-            await generate_infrastructure_code(
-                resource_type='AWS::S3::Bucket', aws_session_info={'credentials_valid': False}
-            )
-
-    @pytest.mark.asyncio
     async def test_create_resource_readonly_mode(self):
         """Test create_resource in readonly mode."""
         from awslabs.ccapi_mcp_server.server import create_resource
@@ -225,10 +168,8 @@ class TestTools:
             with pytest.raises(ClientError, match='read-only mode'):
                 await create_resource(
                     resource_type='AWS::S3::Bucket',
-                    aws_session_info={'account_id': 'test'},
-                    checkov_validation_token='token',
                     properties_token='token',
-                    skip_security_check=True,
+                    aws_session_info={'account_id': 'test', 'region': 'us-east-1'},
                 )
 
     @pytest.mark.asyncio
@@ -278,22 +219,6 @@ class TestTools:
         assert 'security_analysis' in result
 
     @pytest.mark.asyncio
-    async def test_run_checkov_basic(self):
-        """Test run_checkov basic validation."""
-        from awslabs.ccapi_mcp_server.server import run_checkov
-
-        # Test invalid file type
-        with pytest.raises(ClientError):
-            await run_checkov('{}', 'invalid_type')
-
-    def test_checkov_functions(self):
-        """Test checkov helper functions exist."""
-        from awslabs.ccapi_mcp_server.server import _check_checkov_installed
-
-        # Just test the function exists
-        assert callable(_check_checkov_installed)
-
-    @pytest.mark.asyncio
     async def test_update_resource_no_patch_document(self):
         """Test update_resource with empty patch document."""
         from awslabs.ccapi_mcp_server.server import update_resource
@@ -303,9 +228,8 @@ class TestTools:
                 resource_type='AWS::S3::Bucket',
                 identifier='test',
                 patch_document=[],
-                aws_session_info={'account_id': 'test', 'region': 'us-east-1'},
-                checkov_validation_token='token',
                 properties_token='token',
+                aws_session_info={'account_id': 'test', 'region': 'us-east-1'},
             )
 
     @pytest.mark.asyncio
@@ -314,8 +238,6 @@ class TestTools:
         from awslabs.ccapi_mcp_server import server
 
         # Test functions exist
-        assert hasattr(server, 'run_checkov')
-        assert hasattr(server, '_check_checkov_installed')
         assert hasattr(server, 'get_aws_session_info')
         assert hasattr(server, 'get_aws_profile_info')
         assert hasattr(server, 'main')
@@ -340,20 +262,6 @@ class TestTools:
         assert isinstance(result, dict)
         assert 'region' in result
         assert 'using_env_vars' in result
-
-    @pytest.mark.asyncio
-    async def test_run_checkov_invalid_content(self):
-        """Test run_checkov with invalid content type."""
-        from awslabs.ccapi_mcp_server.server import run_checkov
-
-        # Test with object that can't be JSON serialized
-        class UnserializableObject:
-            def __init__(self):
-                self.circular_ref = self
-
-        result = await run_checkov(content=UnserializableObject(), file_type='json')
-        assert not result['passed']
-        assert 'error' in result
 
     @pytest.mark.asyncio
     async def test_type_annotations_coverage(self):
@@ -401,9 +309,8 @@ class TestTools:
         with pytest.raises(ClientError):
             await create_resource(
                 resource_type='',
-                aws_session_info={'account_id': 'test'},
-                checkov_validation_token='token',
                 properties_token='token',
+                aws_session_info={'account_id': 'test', 'region': 'us-east-1'},
             )
 
     @pytest.mark.asyncio
@@ -416,7 +323,7 @@ class TestTools:
                 resource_type='',
                 identifier='test',
                 patch_document=[{'op': 'add'}],
-                properties_token='token',
+                aws_session_info={'account_id': 'test', 'region': 'us-east-1'},
             )
 
     @pytest.mark.asyncio
@@ -426,36 +333,6 @@ class TestTools:
 
         with pytest.raises(ClientError):
             await delete_resource(resource_type='', identifier='test')
-
-    @patch('awslabs.ccapi_mcp_server.server.subprocess.run')
-    @pytest.mark.asyncio
-    async def test_run_checkov_error_exit_code(self, mock_subprocess):
-        """Test run_checkov with error exit code - covers lines 663-679."""
-        from awslabs.ccapi_mcp_server.server import run_checkov
-
-        mock_process = MagicMock()
-        mock_process.returncode = 2  # Error exit code
-        mock_process.stderr = 'Checkov error'
-        mock_subprocess.return_value = mock_process
-
-        result = await run_checkov(content='{}', file_type='json')
-        assert not result['passed']
-        assert 'error' in result
-
-    @patch('awslabs.ccapi_mcp_server.server.subprocess.run')
-    @pytest.mark.asyncio
-    async def test_run_checkov_json_decode_error(self, mock_subprocess):
-        """Test run_checkov JSON decode error - covers lines 652-662."""
-        from awslabs.ccapi_mcp_server.server import run_checkov
-
-        mock_process = MagicMock()
-        mock_process.returncode = 1
-        mock_process.stdout = 'invalid json'
-        mock_subprocess.return_value = mock_process
-
-        result = await run_checkov(content='{}', file_type='json')
-        assert not result['passed']
-        assert 'Failed to parse Checkov output' in result['error']
 
     @pytest.mark.asyncio
     async def test_get_aws_session_info_invalid_env_check(self):
@@ -519,13 +396,12 @@ class TestTools:
                     resource_type='AWS::S3::Bucket',
                     identifier='test',
                     patch_document=[{'op': 'add', 'path': '/test', 'value': 'test'}],
+                    properties_token='token',
                     aws_session_info={
                         'account_id': 'test',
                         'region': 'us-east-1',
                         'readonly_mode': False,
                     },
-                    checkov_validation_token='token',
-                    properties_token='token',
                 )
 
     @pytest.mark.asyncio
@@ -560,7 +436,6 @@ class TestTools:
                         identifier='test',
                         patch_document=[{'op': 'add', 'path': '/test', 'value': 'test'}],
                         aws_session_info={'account_id': 'test', 'region': 'us-east-1'},
-                        checkov_validation_token='token',
                         properties_token='token',
                     )
 
@@ -579,7 +454,6 @@ class TestTools:
                 await create_resource(
                     resource_type='AWS::S3::Bucket',
                     aws_session_info={'account_id': 'test'},
-                    checkov_validation_token='token',
                     properties_token='token',
                 )
 
@@ -615,23 +489,6 @@ class TestTools:
 
             with pytest.raises(ClientError):
                 await get_resource_request_status('test-token')
-
-    @patch('awslabs.ccapi_mcp_server.server._check_checkov_installed')
-    @pytest.mark.asyncio
-    async def test_run_checkov_not_installed(self, mock_check):
-        """Test run_checkov when Checkov not installed - covers lines 578."""
-        from awslabs.ccapi_mcp_server.server import run_checkov
-
-        mock_check.return_value = {
-            'installed': False,
-            'message': 'Checkov not installed',
-            'needs_user_action': True,
-        }
-
-        result = await run_checkov(content='{}', file_type='json')
-        assert not result['passed']
-        assert 'error' in result
-        assert 'Checkov is not installed' in result['error']
 
     @pytest.mark.asyncio
     async def test_get_aws_account_info_success(self):
@@ -742,42 +599,6 @@ class TestTools:
             call_kwargs = mock_impl.call_args[1]
             assert call_kwargs['region'] == 'us-east-1'  # Should fallback to default
 
-    @patch('awslabs.ccapi_mcp_server.server.get_aws_client')
-    @patch('awslabs.ccapi_mcp_server.server.check_environment_variables')
-    @patch('awslabs.ccapi_mcp_server.server.get_aws_session_info')
-    @patch('awslabs.ccapi_mcp_server.server.generate_infrastructure_code')
-    @patch('awslabs.ccapi_mcp_server.server.run_checkov')
-    @pytest.mark.asyncio
-    async def test_get_resource_security_analysis_full_path(
-        self, mock_checkov, mock_gen_code, mock_session, mock_env, mock_client
-    ):
-        """Test get_resource security analysis full success path - hits lines 326-345."""
-        from awslabs.ccapi_mcp_server.server import get_resource
-
-        # Setup mocks for the full security analysis path
-        mock_client.return_value.get_resource.return_value = {
-            'ResourceDescription': {'Identifier': 'test', 'Properties': '{}'}
-        }
-        mock_env.return_value = {'properly_configured': True}
-        mock_session.return_value = {'account_id': '123', 'region': 'us-east-1'}
-        mock_gen_code.return_value = {'cloudformation_template': {'Resources': {}}}
-        mock_checkov.return_value = {'passed': True, 'summary': 'All good'}
-
-        result = await get_resource(
-            resource_type='AWS::S3::Bucket', identifier='test', analyze_security=True
-        )
-
-        # This should hit all the lines 326-345 in the security analysis block
-        assert 'security_analysis' in result
-        assert 'security_result' in result['security_analysis']
-        assert 'template' in result['security_analysis']
-
-        # Verify all the mocked functions were called
-        mock_env.assert_called_once()
-        mock_session.assert_called_once()
-        mock_gen_code.assert_called_once()
-        mock_checkov.assert_called_once()
-
     @pytest.mark.asyncio
     async def test_final_coverage_boost(self):
         """Final test to boost coverage on remaining lines."""
@@ -810,7 +631,11 @@ class TestTools:
                 pass  # Expected
 
             try:
-                await create_resource(resource_type=case, properties_token='token')
+                await create_resource(
+                    resource_type=case,
+                    properties_token='token',
+                    aws_session_info={'account_id': 'test', 'region': 'us-east-1'},
+                )
             except ClientError:
                 pass  # Expected
 
@@ -819,7 +644,7 @@ class TestTools:
                     resource_type=case,
                     identifier=case,
                     patch_document=case,
-                    properties_token='token',
+                    aws_session_info={'account_id': 'test', 'region': 'us-east-1'},
                 )
             except ClientError:
                 pass  # Expected
@@ -854,7 +679,6 @@ class TestTools:
                 identifier='test',
                 patch_document=[{'op': 'add', 'path': '/test', 'value': 'test'}],
                 aws_session_info='invalid',
-                checkov_validation_token='token',
                 properties_token='token',
             )
 
@@ -882,15 +706,14 @@ class TestTools:
 
     @pytest.mark.asyncio
     async def test_create_resource_no_properties(self):
-        """Test create_resource with invalid properties token."""
+        """Test create_resource with no properties."""
         from awslabs.ccapi_mcp_server.server import create_resource
 
         with pytest.raises(ClientError):
             await create_resource(
                 resource_type='AWS::S3::Bucket',
-                aws_session_info={'account_id': 'test'},
-                checkov_validation_token='token',
                 properties_token='invalid_token',
+                aws_session_info={'account_id': 'test', 'region': 'us-east-1'},
             )
 
     @pytest.mark.asyncio
@@ -969,8 +792,10 @@ class TestTools:
         )
 
         assert 'security_analysis' in result
-        assert 'error' in result['security_analysis']
-        assert 'not properly configured' in result['security_analysis']['error']
+        assert (
+            result['security_analysis']['message']
+            == 'Security analysis not available in base version'
+        )
 
     @patch('awslabs.ccapi_mcp_server.server.get_aws_client')
     @patch('awslabs.ccapi_mcp_server.server.check_environment_variables')
@@ -989,8 +814,10 @@ class TestTools:
         )
 
         assert 'security_analysis' in result
-        assert 'error' in result['security_analysis']
-        assert 'Security analysis failed' in result['security_analysis']['error']
+        assert (
+            result['security_analysis']['message']
+            == 'Security analysis not available in base version'
+        )
 
     @pytest.mark.asyncio
     async def test_additional_coverage_paths(self):
@@ -1025,68 +852,22 @@ class TestTools:
         with pytest.raises(ClientError):
             await delete_resource(resource_type=False, identifier=None)
 
-    @patch('awslabs.ccapi_mcp_server.server.subprocess.run')
-    def test_check_checkov_installed_file_not_found(self, mock_subprocess):
-        """Test _check_checkov_installed when Checkov not found - covers lines 513-519."""
-        from awslabs.ccapi_mcp_server.server import _check_checkov_installed
-
-        # First call raises FileNotFoundError, second call succeeds
-        mock_subprocess.side_effect = [
-            FileNotFoundError(),  # checkov --version fails
-            MagicMock(returncode=0),  # pip install succeeds
-        ]
-
-        result = _check_checkov_installed()
-        assert result['installed'] is True
-        assert 'automatically installed' in result['message']
-
-    @patch('awslabs.ccapi_mcp_server.server.subprocess.run')
-    def test_check_checkov_install_failure(self, mock_subprocess):
-        """Test _check_checkov_installed install failure - covers lines 500-519."""
-        import subprocess
-        from awslabs.ccapi_mcp_server.server import _check_checkov_installed
-
-        # First call raises FileNotFoundError, second call fails
-        mock_subprocess.side_effect = [
-            FileNotFoundError(),  # checkov --version fails
-            subprocess.CalledProcessError(1, 'pip'),  # pip install fails
-        ]
-
-        result = _check_checkov_installed()
-        assert result['installed'] is False
-        assert 'Failed to install Checkov' in result['message']
-        assert result['needs_user_action'] is True
-
     @pytest.mark.asyncio
     async def test_create_resource_missing_properties(self):
-        """Test create_resource with missing properties - covers line 678."""
+        """Test create_resource with missing properties token."""
         from awslabs.ccapi_mcp_server.server import create_resource
 
         with pytest.raises(ClientError, match='Invalid properties token'):
             await create_resource(
                 resource_type='AWS::S3::Bucket',
-                aws_session_info={'account_id': 'test'},
-                checkov_validation_token='token',
                 properties_token='invalid_token',
-            )
-
-    @pytest.mark.asyncio
-    async def test_create_resource_empty_properties(self):
-        """Test create_resource with empty properties - covers line 679."""
-        from awslabs.ccapi_mcp_server.server import create_resource
-
-        with pytest.raises(ClientError, match='Invalid properties token'):
-            await create_resource(
-                resource_type='AWS::S3::Bucket',
-                aws_session_info={'account_id': 'test'},
-                checkov_validation_token='token',
-                properties_token='invalid_token',
+                aws_session_info={'account_id': 'test', 'region': 'us-east-1'},
             )
 
     @patch('awslabs.ccapi_mcp_server.server.Context.readonly_mode')
     @pytest.mark.asyncio
     async def test_create_resource_readonly_aws_session(self, mock_readonly):
-        """Test create_resource readonly mode from aws_session_info - covers line 752."""
+        """Test create_resource readonly mode from aws_session_info."""
         from awslabs.ccapi_mcp_server.server import create_resource
 
         mock_readonly.return_value = False  # Server not in readonly mode
@@ -1094,10 +875,12 @@ class TestTools:
         with pytest.raises(ClientError, match='read-only mode'):
             await create_resource(
                 resource_type='AWS::S3::Bucket',
-                aws_session_info={'account_id': 'test', 'readonly_mode': True},
-                checkov_validation_token='token',
                 properties_token='token',
-                skip_security_check=True,
+                aws_session_info={
+                    'account_id': 'test',
+                    'region': 'us-east-1',
+                    'readonly_mode': True,
+                },
             )
 
     @patch('awslabs.ccapi_mcp_server.server.get_aws_client')
@@ -1142,7 +925,7 @@ class TestTools:
 
     @pytest.mark.asyncio
     async def test_update_resource_session_readonly_mode(self):
-        """Test update_resource with readonly mode in session - covers line 473."""
+        """Test update_resource with readonly mode in session."""
         from awslabs.ccapi_mcp_server.server import update_resource
 
         with patch('awslabs.ccapi_mcp_server.server.Context.readonly_mode', return_value=False):
@@ -1156,13 +939,11 @@ class TestTools:
                         'region': 'us-east-1',
                         'readonly_mode': True,
                     },
-                    checkov_validation_token='token',
-                    properties_token='token',
                 )
 
     @pytest.mark.asyncio
     async def test_update_resource_invalid_session_type(self):
-        """Test update_resource with invalid session info type - covers line 452."""
+        """Test update_resource with invalid session info type."""
         from awslabs.ccapi_mcp_server.server import update_resource
 
         with pytest.raises(ClientError, match='You must call get_aws_session_info'):
@@ -1171,23 +952,6 @@ class TestTools:
                 identifier='test',
                 patch_document=[{'op': 'add', 'path': '/test', 'value': 'test'}],
                 aws_session_info='invalid_type',
-                checkov_validation_token='token',
-                properties_token='token',
-            )
-
-    @pytest.mark.asyncio
-    async def test_update_resource_invalid_properties_token(self):
-        """Test update_resource with invalid properties token."""
-        from awslabs.ccapi_mcp_server.server import update_resource
-
-        with pytest.raises(ClientError, match='Invalid properties token'):
-            await update_resource(
-                resource_type='AWS::S3::Bucket',
-                identifier='test',
-                patch_document=[{'op': 'add', 'path': '/test', 'value': 'test'}],
-                aws_session_info={'account_id': 'test', 'region': 'us-east-1'},
-                checkov_validation_token='token',
-                properties_token='invalid_token',
             )
 
     @patch('awslabs.ccapi_mcp_server.server.get_aws_client')

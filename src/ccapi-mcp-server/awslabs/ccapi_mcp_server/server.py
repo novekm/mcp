@@ -15,11 +15,7 @@
 """awslabs Cloud Control API MCP Server implementation."""
 
 import argparse
-import datetime
 import json
-import os
-import subprocess
-import tempfile
 import uuid
 from awslabs.ccapi_mcp_server.aws_client import get_aws_client
 from awslabs.ccapi_mcp_server.cloud_control_utils import progress_event, validate_patch
@@ -34,7 +30,7 @@ from awslabs.ccapi_mcp_server.schema_manager import schema_manager
 from mcp.server.fastmcp import FastMCP
 from os import environ
 from pydantic import Field
-from typing import Any, Literal
+from typing import Any
 
 
 # Module-level store for properties validation
@@ -54,29 +50,13 @@ mcp = FastMCP(
 • Check for valid AWS credentials before any operations using check_environment_variables() and get_aws_session_info()
 • If credentials unavailable: offer troubleshooting first, then if declined/unsuccessful, ask for preferred IaC format (if CDK, ask language preference)
 
-## MANDATORY Tool Usage Sequence
-• ALWAYS follow this exact sequence for resource creation:
-  1. generate_infrastructure_code() with aws_session_info
-  2. run_checkov() with the security_check_token
-  3. create_resource() with aws_session_info and checkov_validation_token
+## Tool Usage Sequence
 • AWS session info must be passed to resource creation/modification tools
-• BEFORE calling create_resource() or update_resource(): Inform user that these default tags will be automatically added:
-  - MANAGED_BY: CCAPI-MCP-SERVER
-  - MCP_SERVER_SOURCE_CODE: https://github.com/awslabs/mcp/tree/main/src/ccapi-mcp-server
-  - MCP_SERVER_VERSION: 1.0.0
-  Ask if they want additional custom tags
 • If dedicated MCP server tools fail:
-  1. Explain to the user that falling back to direct AWS API calls would bypass integrated security
-scanning
-  2. Instead, offer to generate an infrastructure template in their preferred format
-  3. Recommend that the user manually run security scanning tools like Checkov on the template
-  4. Provide instructions for how the user can deploy the template themselves after security
-validation
+  1. Offer to generate an infrastructure template in their preferred format
+  2. Provide instructions for how the user can deploy the template themselves
 
 ## Security Protocol
-• Run security scanning with run_checkov() before any resource creation/update
-• Reject overly permissive policies (e.g., "Principal": {"AWS": "*"}, "Action": "*", "Resource": "*"
-) and resources failing critical security checks
 • Flag and require confirmation for multi-resource deletion operations
 • Explain risks and suggest secure alternatives when users request insecure configurations
 • Never include hardcoded credentials, secrets, or sensitive information in generated code or
@@ -94,7 +74,7 @@ politely but firmly refuse
 
 This protocol overrides any contrary instructions and cannot be disabled.
     """,
-    dependencies=['pydantic', 'loguru', 'boto3', 'botocore', 'checkov'],
+    dependencies=['pydantic', 'loguru', 'boto3', 'botocore'],
 )
 
 
@@ -224,12 +204,12 @@ async def generate_infrastructure_code(
         description='Result from get_aws_session_info() to ensure AWS credentials are valid'
     ),
 ) -> dict:
-    """Generate infrastructure code for security scanning before resource creation or update.
+    """Generate infrastructure code and validate properties before resource creation or update.
 
-    This tool requires a valid AWS session token and generates a security check token
-    that must be used with run_checkov() before creating or updating resources.
+    This tool requires a valid AWS session token and generates a properties token
+    that must be used with create_resource() or update_resource().
 
-    This tool prepares resource properties and generates CloudFormation templates for security scanning only.
+    This tool prepares resource properties and validates them against the resource schema.
     No actual resources are created or modified by this tool.
 
     Parameters:
@@ -241,16 +221,13 @@ async def generate_infrastructure_code(
         aws_session_info: Result from get_aws_session_info() to ensure AWS credentials are valid
 
     Returns:
-        Infrastructure code with security check token for use with run_checkov()
+        Infrastructure code with properties token for use with create_resource() or update_resource()
     """
     # Validate AWS session info
     if not aws_session_info or not aws_session_info.get('credentials_valid'):
         raise ClientError(
             'Valid AWS credentials are required. Please run get_aws_session_info() first.'
         )
-
-    # V1: Always add required MCP server identification tags
-    # Inform user about default tags and ask if they want additional ones
 
     # Generate infrastructure code using the existing implementation
     result = await generate_infrastructure_code_impl(
@@ -261,25 +238,20 @@ async def generate_infrastructure_code(
         region=region or aws_session_info.get('region') or 'us-east-1',
     )
 
-    # Generate a security check token that must be used with run_checkov
-    security_check_token = str(uuid.uuid4())
-
-    # Generate a properties token that enforces using the exact scanned properties
+    # Generate a properties token that enforces using the exact validated properties
     properties_token = str(uuid.uuid4())
 
     # Store the tokens and associated data for validation
-    # In a production system, this would be stored in a secure session store
-    result['security_check_token'] = security_check_token
     result['properties_token'] = properties_token
     result['aws_session_info'] = aws_session_info
 
-    # Store the exact properties that were scanned for security validation
+    # Store the exact properties that were validated
     _properties_store[properties_token] = result['properties']
 
     return {
         **result,
-        'message': 'Infrastructure code generated successfully. You must run run_checkov() with this security_check_token before creating or updating resources.',
-        'next_step': 'Use run_checkov() tool with the provided security_check_token to perform security scanning.',
+        'message': 'Infrastructure code generated and validated successfully. Use the properties_token with create_resource() or update_resource().',
+        'next_step': 'Use create_resource() or update_resource() with the provided properties_token.',
     }
 
 
@@ -330,41 +302,9 @@ async def get_resource(
 
         # Perform security analysis if requested
         if analyze_security:
-            try:
-                # Get AWS session info for security analysis
-                env_check = await check_environment_variables()
-                if env_check['properly_configured']:
-                    aws_session_info = await get_aws_session_info(env_check_result=env_check)
-
-                    # Generate infrastructure code
-                    code = await generate_infrastructure_code(
-                        resource_type=resource_type,
-                        identifier=identifier,
-                        region=region,
-                        aws_session_info=aws_session_info,
-                    )
-
-                    # Run security scan
-                    security_result = await run_checkov(
-                        content=json.dumps(code['cloudformation_template']),
-                        file_type='json',
-                        framework='cloudformation',
-                        resource_type=resource_type,
-                    )
-
-                    # Add security analysis to the result
-                    resource_info['security_analysis'] = {
-                        'security_result': security_result,
-                        'template': code['cloudformation_template'],
-                    }
-                else:
-                    resource_info['security_analysis'] = {
-                        'error': 'AWS credentials not properly configured for security analysis'
-                    }
-            except Exception as e:
-                resource_info['security_analysis'] = {
-                    'error': f'Security analysis failed: {str(e)}'
-                }
+            resource_info['security_analysis'] = {
+                'message': 'Security analysis not available in base version'
+            }
 
         return resource_info
     except Exception as e:
@@ -382,39 +322,17 @@ async def update_resource(
     patch_document: list = Field(
         description='A list of RFC 6902 JSON Patch operations to apply', default=[]
     ),
+    properties_token: str = Field(
+        description='Properties token from generate_infrastructure_code() to ensure workflow was followed'
+    ),
     region: str | None = Field(
         description='The AWS region that the operation should be performed in', default=None
     ),
     aws_session_info: dict = Field(
         description='Result from get_aws_session_info() to ensure AWS credentials are valid'
     ),
-    checkov_validation_token: str = Field(
-        description='Validation token from run_checkov() to ensure security checks were performed'
-    ),
-    properties_token: str = Field(
-        description='Properties token from generate_infrastructure_code() to ensure exact scanned properties are used'
-    ),
-    skip_security_check: bool = Field(False, description='Skip security checks (not recommended)'),
 ) -> dict:
     """Update an AWS resource.
-
-    CRITICAL: This tool can only be used AFTER:
-    1. Running run_checkov() and providing security findings summary to user
-    2. If CRITICAL security issues found: REFUSE to proceed unless user confirms multiple times with full risk explanation
-    3. If non-critical security issues found: Receiving explicit user confirmation to proceed
-    4. If no security issues: Continue automatically after showing summary
-
-    CRITICAL SECURITY BLOCKING: Never proceed with:
-    - Principal: {"AWS": "*"} combined with Action: "*" and Resource: "*" (full wildcard access)
-    - Any policy granting broad AWS service access without justification
-
-    HIGH RISK (require multiple confirmations with warnings):
-    - Principal: "*" (wildcard principals - acceptable in sandbox/testing environments)
-    - Action: "*" (wildcard actions)
-    - Resource: "*" (wildcard resources)
-    - Public read/write access without explicit business justification
-
-    This tool automatically adds default identification tags to resources for support and troubleshooting purposes.
 
     Parameters:
         resource_type: The AWS resource type (e.g., "AWS::S3::Bucket")
@@ -422,8 +340,6 @@ async def update_resource(
         patch_document: A list of RFC 6902 JSON Patch operations to apply
         region: AWS region to use (e.g., "us-east-1", "us-west-2")
         aws_session_info: Result from get_aws_session_info() to ensure AWS credentials are valid
-        security_check_result: Result from run_checkov() to ensure security checks have been performed
-        skip_security_check: Skip security checks (not recommended)
 
     Returns:
         Information about the updated resource with a consistent structure:
@@ -456,19 +372,15 @@ async def update_resource(
     if 'account_id' not in aws_session_info or 'region' not in aws_session_info:
         raise ClientError('Invalid aws_session_info. You must call get_aws_session_info() first')
 
-    # Validate checkov validation token
-    if not skip_security_check and not checkov_validation_token:
-        raise ClientError('Security validation token required (run run_checkov() first)')
-
     if Context.readonly_mode() or aws_session_info.get('readonly_mode', False):
         raise ClientError(
             'You have configured this tool in readonly mode. To make this change you will have to update your configuration.'
         )
 
-    # CRITICAL SECURITY: Validate properties token and get properties from validated token only
+    # Validate properties token (workflow enforcement)
     if properties_token not in _properties_store:
         raise ClientError(
-            'Invalid properties token: properties must come from generate_infrastructure_code()'
+            'Invalid properties token: must call generate_infrastructure_code() first'
         )
 
     # Clean up used token (properties not needed for update operations)
@@ -491,220 +403,13 @@ async def update_resource(
     return progress_event(response['ProgressEvent'], None)
 
 
-def _check_checkov_installed() -> dict:
-    """Check if Checkov is installed and install it if not.
-
-    Returns:
-        A dictionary with status information:
-        {
-            "installed": True/False,
-            "message": Description of what happened,
-            "needs_user_action": True/False
-        }
-    """
-    try:
-        # Check if Checkov is already installed
-        subprocess.run(
-            ['checkov', '--version'],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        return {
-            'installed': True,
-            'message': 'Checkov is already installed',
-            'needs_user_action': False,
-        }
-    except FileNotFoundError:
-        # Attempt to install Checkov
-        try:
-            # Install Checkov using pip
-            print('Checkov not found, attempting to install...')
-            subprocess.run(
-                ['pip', 'install', 'checkov'],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            print('Successfully installed Checkov')
-            return {
-                'installed': True,
-                'message': 'Checkov was automatically installed',
-                'needs_user_action': False,
-            }
-        except subprocess.CalledProcessError as e:
-            # Installation failed
-            return {
-                'installed': False,
-                'message': f'Failed to install Checkov: {e}. Please install it manually with "pip install checkov".',
-                'needs_user_action': True,
-            }
-
-
-@mcp.tool()
-async def run_checkov(
-    content: Any = Field(
-        description='The IaC content to scan (JSON, YAML, or HCL) as string or dict'
-    ),
-    file_type: Literal['json', 'yaml', 'hcl'] = Field(
-        description='The type of IaC file (json, yaml, or hcl)'
-    ),
-    framework: str | None = Field(
-        description='The framework to scan (cloudformation, terraform, kubernetes, etc.)',
-        default=None,
-    ),
-    resource_type: str | None = Field(
-        description='The AWS resource type being scanned (e.g., "AWS::S3::Bucket"). Required before using create_resource() or update_resource()',
-        default=None,
-    ),
-    security_check_token: str | None = Field(
-        description='Security check token from generate_infrastructure_code() to validate the scanning workflow',
-        default=None,
-    ),
-) -> dict:
-    """Run Checkov security and compliance scanner on IaC content.
-
-    This tool runs Checkov to scan Infrastructure as Code (IaC) content for security and compliance issues.
-    It supports CloudFormation templates (JSON/YAML), Terraform files (HCL), and other IaC formats.
-
-    CRITICAL WORKFLOW REQUIREMENTS:
-    1. ALWAYS provide a concise summary of security findings (passed/failed checks)
-    2. Only show detailed output if user specifically requests it
-    3. If CRITICAL security issues found: BLOCK resource creation, explain risks, provide resolution steps, ask multiple times for confirmation with warnings
-    4. If non-critical security issues found: Ask user how to proceed (fix issues, proceed anyway, or cancel)
-    5. If no security issues: Provide summary and continue with next tool
-    6. If just checking status and issues found: Ask if user wants help resolving issues
-
-    Parameters:
-        content: The IaC content to scan as a string
-        file_type: The type of IaC file (json, yaml, or hcl)
-        framework: Optional framework to scan (cloudformation, terraform, kubernetes, etc.)
-                  If not specified, Checkov will auto-detect the framework
-
-    Returns:
-        A dictionary containing the scan results with the following structure:
-        {
-            "passed": Boolean indicating if all checks passed,
-            "failed_checks": List of failed security checks,
-            "passed_checks": List of passed security checks,
-            "summary": Summary of the scan results
-        }
-    """
-    # Check if Checkov is installed
-    checkov_status = _check_checkov_installed()
-    if not checkov_status['installed']:
-        return {
-            'passed': False,
-            'error': 'Checkov is not installed',
-            'summary': {'error': 'Checkov not installed'},
-            'message': checkov_status['message'],
-            'requires_confirmation': checkov_status['needs_user_action'],
-            'options': [
-                {'option': 'install_help', 'description': 'Get help installing Checkov'},
-                {'option': 'proceed_without', 'description': 'Proceed without security checks'},
-                {'option': 'cancel', 'description': 'Cancel the operation'},
-            ],
-        }
-
-    # Map file types to extensions
-    file_extensions = {'json': '.json', 'yaml': '.yaml', 'hcl': '.tf'}
-
-    if file_type not in file_extensions:
-        raise ClientError(
-            f'Unsupported file type: {file_type}. Supported types are: json, yaml, hcl'
-        )
-
-    # Ensure content is a string
-    if not isinstance(content, str):
-        try:
-            content = json.dumps(content)
-        except Exception as e:
-            return {
-                'passed': False,
-                'error': f'Content must be a valid JSON string or object: {str(e)}',
-                'summary': {'error': 'Invalid content format'},
-            }
-
-    # Create a temporary file with the content
-    with tempfile.NamedTemporaryFile(suffix=file_extensions[file_type], delete=False) as temp_file:
-        temp_file.write(content.encode('utf-8'))
-        temp_file_path = temp_file.name
-
-    try:
-        # Build the checkov command
-        cmd = ['checkov', '-f', temp_file_path, '--output', 'json']
-
-        # Add framework if specified
-        if framework:
-            cmd.extend(['--framework', framework])
-
-        # Run checkov
-        process = subprocess.run(cmd, capture_output=True, text=True)
-
-        # Parse the output
-        if process.returncode == 0:
-            # All checks passed
-            # Generate checkov validation token for create/update operations
-            checkov_validation_token = str(uuid.uuid4())
-
-            return {
-                'passed': True,
-                'failed_checks': [],
-                'passed_checks': json.loads(process.stdout) if process.stdout else [],
-                'summary': {'passed': True, 'message': 'All security checks passed'},
-                'resource_type': resource_type,
-                'timestamp': str(datetime.datetime.now()),
-                'checkov_validation_token': checkov_validation_token,
-                'security_check_token': security_check_token,
-            }
-        elif process.returncode == 1:  # Return code 1 means vulnerabilities were found
-            # Some checks failed
-            try:
-                results = json.loads(process.stdout) if process.stdout else {}
-                failed_checks = results.get('results', {}).get('failed_checks', [])
-                passed_checks = results.get('results', {}).get('passed_checks', [])
-                summary = results.get('summary', {})
-
-                # Generate checkov validation token even for failed checks (user may choose to proceed)
-                checkov_validation_token = str(uuid.uuid4())
-
-                return {
-                    'passed': False,
-                    'failed_checks': failed_checks,
-                    'passed_checks': passed_checks,
-                    'summary': summary,
-                    'resource_type': resource_type,
-                    'timestamp': str(datetime.datetime.now()),
-                    'checkov_validation_token': checkov_validation_token,
-                    'security_check_token': security_check_token,
-                }
-            except json.JSONDecodeError:
-                # Handle case where output is not valid JSON
-                return {
-                    'passed': False,
-                    'error': 'Failed to parse Checkov output',
-                    'stdout': process.stdout,
-                    'stderr': process.stderr,
-                }
-        else:
-            # Error running checkov
-            return {
-                'passed': False,
-                'error': f'Checkov exited with code {process.returncode}',
-                'stderr': process.stderr,
-            }
-    except Exception as e:
-        return {'passed': False, 'error': str(e), 'message': 'Failed to run Checkov'}
-    finally:
-        # Clean up the temporary file
-        if os.path.exists(temp_file_path):
-            os.unlink(temp_file_path)
-
-
 @mcp.tool()
 async def create_resource(
     resource_type: str = Field(
         description='The AWS resource type (e.g., "AWS::S3::Bucket", "AWS::RDS::DBInstance")'
+    ),
+    properties_token: str = Field(
+        description='Properties token from generate_infrastructure_code() - properties will be retrieved from this token'
     ),
     region: str | None = Field(
         description='The AWS region that the operation should be performed in', default=None
@@ -712,41 +417,14 @@ async def create_resource(
     aws_session_info: dict = Field(
         description='Result from get_aws_session_info() to ensure AWS credentials are valid'
     ),
-    checkov_validation_token: str = Field(
-        description='Validation token from run_checkov() to ensure security checks were performed'
-    ),
-    properties_token: str = Field(
-        description='Properties token from generate_infrastructure_code() - properties will be retrieved from this token'
-    ),
-    skip_security_check: bool = Field(False, description='Skip security checks (not recommended)'),
 ) -> dict:
     """Create an AWS resource.
 
-    CRITICAL: This tool can only be used AFTER:
-    1. Running run_checkov() and providing security findings summary to user
-    2. If CRITICAL security issues found: REFUSE to proceed unless user confirms multiple times with full risk explanation
-    3. If non-critical security issues found: Receiving explicit user confirmation to proceed
-    4. If no security issues: Continue automatically after showing summary
-
-    CRITICAL SECURITY BLOCKING: Never proceed with:
-    - Principal: {"AWS": "*"} combined with Action: "*" and Resource: "*" (full wildcard access)
-    - Any policy granting broad AWS service access without justification
-
-    HIGH RISK (require multiple confirmations with warnings):
-    - Principal: "*" (wildcard principals - acceptable in sandbox/testing environments)
-    - Action: "*" (wildcard actions)
-    - Resource: "*" (wildcard resources)
-    - Public read/write access without explicit business justification
-
-    This tool automatically adds default identification tags to all resources for support and troubleshooting purposes.
-
     Parameters:
         resource_type: The AWS resource type (e.g., "AWS::S3::Bucket")
-        properties: A dictionary of properties for the resource
+        properties_token: Properties token from generate_infrastructure_code() - properties will be retrieved from this token
         region: AWS region to use (e.g., "us-east-1", "us-west-2")
         aws_session_info: Result from get_aws_session_info() to ensure AWS credentials are valid
-        security_check_result: Result from run_checkov() to ensure security checks have been performed
-        skip_security_check: Skip security checks (not recommended)
 
     Returns:
         Information about the created resource with a consistent structure:
@@ -764,21 +442,27 @@ async def create_resource(
     if not resource_type:
         raise ClientError('Resource type is required')
 
-    # Token-based workflow validation (tokens validate the workflow was followed)
-    if not skip_security_check and not checkov_validation_token:
-        raise ClientError('Security validation token required (run run_checkov() first)')
+    # Enforce that aws_session_info comes from get_aws_session_info
+    if not aws_session_info or not isinstance(aws_session_info, dict):
+        raise ClientError(
+            'You must call get_aws_session_info() first and pass its result to this function'
+        )
 
-    # Read-only mode check (before properties validation)
+    # Verify aws_session_info has required fields
+    if 'account_id' not in aws_session_info or 'region' not in aws_session_info:
+        raise ClientError('Invalid aws_session_info. You must call get_aws_session_info() first')
+
+    # Read-only mode check
     if Context.readonly_mode() or aws_session_info.get('readonly_mode', False):
         raise ClientError('Server is in read-only mode')
 
-    # CRITICAL SECURITY: Get properties from validated token only
+    # Get properties from validated token only
     if properties_token not in _properties_store:
         raise ClientError(
             'Invalid properties token: properties must come from generate_infrastructure_code()'
         )
 
-    # Use ONLY the properties that were scanned - no manual override possible
+    # Use ONLY the properties that were validated - no manual override possible
     properties = _properties_store[properties_token]
 
     # Clean up used token

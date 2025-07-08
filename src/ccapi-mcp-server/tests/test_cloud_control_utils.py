@@ -81,24 +81,6 @@ class TestUtils:
         assert result['identifier'] == 'my-bucket'
         assert result['is_complete']
 
-    def test_add_default_tags_enabled(self):
-        """Test adding default tags when enabled."""
-        import os
-        from awslabs.ccapi_mcp_server.cloud_control_utils import add_default_tags
-
-        os.environ['DEFAULT_TAGGING'] = 'true'
-        properties = {'BucketName': 'test-bucket'}
-        schema = {'properties': {'Tags': {}}}
-
-        result = add_default_tags(properties, schema)
-
-        # Function may or may not add tags depending on implementation
-        assert isinstance(result, dict)
-
-        # Clean up
-        if 'DEFAULT_TAGGING' in os.environ:
-            del os.environ['DEFAULT_TAGGING']
-
     def test_validate_patch_replace_operation(self):
         """Test patch validation with replace operation."""
         patch_doc = [{'op': 'replace', 'path': '/BucketName', 'value': 'new-bucket'}]
@@ -193,26 +175,6 @@ class TestUtils:
         assert result['resource_type'] == 'AWS::S3::Bucket'
         assert result['request_token'] == 'test-token'
 
-    def test_add_default_tags_always_enabled(self):
-        """Test add_default_tags always adds tags in v1."""
-        from awslabs.ccapi_mcp_server.cloud_control_utils import add_default_tags
-
-        properties = {'BucketName': 'test-bucket'}
-        schema = {'properties': {'Tags': {}}}
-
-        result = add_default_tags(properties, schema)
-        assert 'Tags' in result
-        assert len(result['Tags']) == 3
-        tag_keys = {tag['Key'] for tag in result['Tags']}
-        assert tag_keys == {'MANAGED_BY', 'MCP_SERVER_SOURCE_CODE', 'MCP_SERVER_VERSION'}
-
-    def test_add_default_tags_no_properties(self):
-        """Test add_default_tags with no properties."""
-        from awslabs.ccapi_mcp_server.cloud_control_utils import add_default_tags
-
-        result = add_default_tags({}, {})
-        assert result == {}
-
     def test_progress_event_with_hooks(self):
         """Test progress event with hooks events."""
         event = {
@@ -246,45 +208,6 @@ class TestUtils:
 
         # Test valid copy operation
         validate_patch([{'op': 'copy', 'path': '/test', 'from': '/source'}])
-
-    def test_add_default_tags_no_tags_property(self):
-        """Test add_default_tags without Tags property - covers lines 70, 104."""
-        import os
-        from awslabs.ccapi_mcp_server.cloud_control_utils import add_default_tags
-
-        # Test with DEFAULT_TAGS enabled but no Tags property in schema
-        os.environ['DEFAULT_TAGS'] = 'enabled'
-
-        properties = {'BucketName': 'test-bucket'}
-        schema = {'properties': {'BucketName': {'type': 'string'}}}  # No Tags property
-
-        result = add_default_tags(properties, schema)
-
-        # Should return original properties since no Tags property
-        assert result == properties
-
-        # Clean up
-        if 'DEFAULT_TAGS' in os.environ:
-            del os.environ['DEFAULT_TAGS']
-
-    def test_add_default_tags_with_tags_property(self):
-        """Test add_default_tags with Tags property in schema."""
-        import os
-        from awslabs.ccapi_mcp_server.cloud_control_utils import add_default_tags
-
-        os.environ['DEFAULT_TAGS'] = 'enabled'
-
-        properties = {'BucketName': 'test-bucket'}
-        schema = {'properties': {'Tags': {'type': 'array'}}}
-
-        result = add_default_tags(properties, schema)
-
-        # Should add default tags when enabled and Tags property exists
-        assert isinstance(result, dict)
-
-        # Clean up
-        if 'DEFAULT_TAGS' in os.environ:
-            del os.environ['DEFAULT_TAGS']
 
     def test_progress_event_with_error_code(self):
         """Test progress event with error code."""
