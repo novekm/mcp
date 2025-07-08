@@ -30,7 +30,6 @@ from awslabs.ccapi_mcp_server.schema_manager import schema_manager
 from mcp.server.fastmcp import FastMCP
 from os import environ
 from pydantic import Field
-from typing import Any
 
 
 # Module-level store for properties validation
@@ -111,27 +110,17 @@ async def list_resources(
     region: str | None = Field(
         description='The AWS region that the operation should be performed in', default=None
     ),
-    analyze_security: bool = Field(
-        False,
-        description='Whether to perform security analysis on the resources (limited to first 5 resources)',
-    ),
-    max_resources_to_analyze: int = Field(
-        5, description='Maximum number of resources to analyze when analyze_security=True'
-    ),
 ) -> dict:
     """List AWS resources of a specified type.
 
     Parameters:
         resource_type: The AWS resource type (e.g., "AWS::S3::Bucket", "AWS::RDS::DBInstance")
         region: AWS region to use (e.g., "us-east-1", "us-west-2")
-        analyze_security: Whether to perform security analysis on the resources
-        max_resources_to_analyze: Maximum number of resources to analyze when analyze_security=True
 
     Returns:
         A dictionary containing:
         {
-            "resources": List of resource identifiers,
-            "security_analysis": Optional security analysis results if analyze_security=True
+            "resources": List of resource identifiers
         }
     """
     if not resource_type:
@@ -149,37 +138,7 @@ async def list_resources(
         raise handle_aws_api_error(e)
 
     resource_identifiers = [response['Identifier'] for response in results]
-    response: dict[str, Any] = {'resources': resource_identifiers}
-
-    # Perform security analysis if requested
-    if analyze_security and resource_identifiers:
-        security_analyses: dict[str, Any] = {}
-        # Limit the number of resources to analyze to avoid excessive processing
-        resources_to_analyze = resource_identifiers[:max_resources_to_analyze]
-
-        for identifier in resources_to_analyze:
-            try:
-                # Get resource details with security analysis
-                resource_info = await get_resource(
-                    resource_type=resource_type,
-                    identifier=identifier,
-                    region=region,
-                    analyze_security=True,
-                )
-
-                if 'security_analysis' in resource_info:
-                    # type: ignore
-                    security_analyses[identifier] = resource_info['security_analysis']
-            except Exception as e:
-                security_analyses[identifier] = {'error': str(e)}  # type: ignore
-
-        response['security_analysis'] = security_analyses
-        if len(resource_identifiers) > max_resources_to_analyze:
-            response['note'] = (
-                f'Security analysis limited to first {max_resources_to_analyze} resources. Use get_resource() with analyze_security=True for additional resources.'
-            )
-
-    return response
+    return {'resources': resource_identifiers}
 
 
 @mcp.tool()
@@ -266,9 +225,6 @@ async def get_resource(
     region: str | None = Field(
         description='The AWS region that the operation should be performed in', default=None
     ),
-    analyze_security: bool = Field(
-        False, description='Whether to perform security analysis on the resource'
-    ),
 ) -> dict:
     """Get details of a specific AWS resource.
 
@@ -276,14 +232,12 @@ async def get_resource(
         resource_type: The AWS resource type (e.g., "AWS::S3::Bucket")
         identifier: The primary identifier of the resource to get (e.g., bucket name for S3 buckets)
         region: AWS region to use (e.g., "us-east-1", "us-west-2")
-        analyze_security: Whether to perform security analysis on the resource
 
     Returns:
         Detailed information about the specified resource with a consistent structure:
         {
             "identifier": The resource identifier,
-            "properties": The detailed information about the resource,
-            "security_analysis": Optional security analysis results if analyze_security=True
+            "properties": The detailed information about the resource
         }
     """
     if not resource_type:
@@ -295,18 +249,10 @@ async def get_resource(
     cloudcontrol = get_aws_client('cloudcontrol', region)
     try:
         result = cloudcontrol.get_resource(TypeName=resource_type, Identifier=identifier)
-        resource_info = {
+        return {
             'identifier': result['ResourceDescription']['Identifier'],
             'properties': result['ResourceDescription']['Properties'],
         }
-
-        # Perform security analysis if requested
-        if analyze_security:
-            resource_info['security_analysis'] = {
-                'message': 'Security analysis not available in base version'
-            }
-
-        return resource_info
     except Exception as e:
         raise handle_aws_api_error(e)
 

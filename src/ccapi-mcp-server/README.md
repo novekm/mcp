@@ -115,8 +115,6 @@ The server uses boto3's standard credential chain automatically:
 | ------------------- | ----------- | ---------------------------------------- |
 | `FASTMCP_LOG_LEVEL` | _(not set)_ | Logging level (ERROR, WARN, INFO, DEBUG) |
 
-
-
 ### AWS Account Information Display
 
 The server automatically displays AWS account information on startup:
@@ -281,8 +279,6 @@ Convenience tool that automatically calls `check_environment_variables()` intern
 **Example**: "What AWS account am I using?" - Quick one-step account info.
 **Use when**: You want account info quickly without calling `check_environment_variables()` first.
 
-
-
 ### get_resource_schema_information()
 
 **Requirements**: None
@@ -359,7 +355,7 @@ Creates CloudFormation templates from existing AWS resources using AWS CloudForm
 
 #### The `use_aws` Problem
 
-**Most Problematic**: The `use_aws` tool (part of Amazon Q Developer CLI) is particularly problematic because it directly competes with this MCP server's AWS operations but operates separately, meaning it won't use any of the helpful features available in this MCP server such as Checkov security scanning.
+**Most Problematic**: The `use_aws` tool (part of Amazon Q Developer CLI) is particularly problematic because it directly competes with this MCP server's AWS operations but operates separately, meaning it won't use any of the helpful features available in this MCP server.
 
 **What happens when LLM uses `use_aws`:**
 

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Infrastructure code generation utilities for the CFN MCP Server."""
+"""Infrastructure code generation utilities for the Cloud Control API MCP Server."""
 
 import json
 from awslabs.ccapi_mcp_server.aws_client import get_aws_client

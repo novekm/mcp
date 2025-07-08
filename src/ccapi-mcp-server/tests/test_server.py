@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for the cfn MCP Server."""
+"""Tests for the CCAPI MCP Server."""
 
 import pytest
 from awslabs.ccapi_mcp_server.errors import ClientError
@@ -142,23 +142,6 @@ class TestTools:
                 aws_session_info={'region': 'us-east-1'},
             )
 
-    @patch('awslabs.ccapi_mcp_server.server.get_aws_client')
-    @pytest.mark.asyncio
-    async def test_list_resources_security_analysis(self, mock_client):
-        """Test list_resources security analysis - lines 167-193."""
-        from awslabs.ccapi_mcp_server.server import list_resources
-
-        mock_paginator = MagicMock()
-        mock_paginator.paginate.return_value = [{'ResourceDescriptions': [{'Identifier': 'test'}]}]
-        mock_client.return_value.get_paginator.return_value = mock_paginator
-
-        with patch('awslabs.ccapi_mcp_server.server.get_resource') as mock_get:
-            mock_get.side_effect = Exception('Test error')
-            result = await list_resources(
-                resource_type='AWS::S3::Bucket', analyze_security=True, max_resources_to_analyze=5
-            )
-            assert 'security_analysis' in result
-
     @pytest.mark.asyncio
     async def test_create_resource_readonly_mode(self):
         """Test create_resource in readonly mode."""
@@ -202,21 +185,6 @@ class TestTools:
         # Test missing template_name and template_id
         with pytest.raises(ClientError):
             await create_template(template_name=None, template_id=None)
-
-    @patch('awslabs.ccapi_mcp_server.server.get_aws_client')
-    @pytest.mark.asyncio
-    async def test_get_resource_with_security_analysis(self, mock_client):
-        """Test get_resource with security analysis."""
-        from awslabs.ccapi_mcp_server.server import get_resource
-
-        mock_client.return_value.get_resource.return_value = {
-            'ResourceDescription': {'Identifier': 'test', 'Properties': '{"test": "value"}'}
-        }
-
-        result = await get_resource(
-            resource_type='AWS::S3::Bucket', identifier='test', analyze_security=True
-        )
-        assert 'security_analysis' in result
 
     @pytest.mark.asyncio
     async def test_update_resource_no_patch_document(self):
@@ -544,35 +512,6 @@ class TestTools:
             with pytest.raises(ClientError):
                 await get_resource(resource_type='AWS::S3::Bucket', identifier='test')
 
-    @patch('awslabs.ccapi_mcp_server.server.get_aws_client')
-    @pytest.mark.asyncio
-    async def test_list_resources_with_security_analysis_success(self, mock_client):
-        """Test list_resources with security analysis - hits type annotation lines 164, 167."""
-        from awslabs.ccapi_mcp_server.server import list_resources
-
-        mock_paginator = MagicMock()
-        mock_paginator.paginate.return_value = [
-            {'ResourceDescriptions': [{'Identifier': 'test-bucket'}]}
-        ]
-        mock_client.return_value.get_paginator.return_value = mock_paginator
-
-        with patch('awslabs.ccapi_mcp_server.server.get_resource') as mock_get:
-            mock_get.return_value = {
-                'identifier': 'test-bucket',
-                'properties': '{}',
-                'security_analysis': {'passed': True},
-            }
-
-            result = await list_resources(
-                resource_type='AWS::S3::Bucket', analyze_security=True, max_resources_to_analyze=1
-            )
-
-            # This hits the type annotation lines 164 and 167
-            assert 'resources' in result
-            assert 'security_analysis' in result
-            assert isinstance(result, dict)  # Hits line 164 type annotation
-            assert 'test-bucket' in result['security_analysis']  # Hits line 167 type annotation
-
     @pytest.mark.asyncio
     async def test_generate_infrastructure_code_region_fallback_specific(self):
         """Test the specific region fallback line 256."""
@@ -597,7 +536,8 @@ class TestTools:
             # Verify the fallback logic was executed
             mock_impl.assert_called_once()
             call_kwargs = mock_impl.call_args[1]
-            assert call_kwargs['region'] == 'us-east-1'  # Should fallback to default
+            # Should fallback to default
+            assert call_kwargs['region'] == 'us-east-1'
 
     @pytest.mark.asyncio
     async def test_final_coverage_boost(self):
@@ -737,25 +677,6 @@ class TestTools:
                 confirmed=False,
             )
 
-    @patch('awslabs.ccapi_mcp_server.server.get_aws_client')
-    @pytest.mark.asyncio
-    async def test_list_resources_security_analysis_error(self, mock_client):
-        """Test list_resources security analysis with error - covers lines 183-185."""
-        from awslabs.ccapi_mcp_server.server import list_resources
-
-        mock_paginator = MagicMock()
-        mock_paginator.paginate.return_value = [{'ResourceDescriptions': [{'Identifier': 'test'}]}]
-        mock_client.return_value.get_paginator.return_value = mock_paginator
-
-        with patch('awslabs.ccapi_mcp_server.server.get_resource') as mock_get:
-            mock_get.side_effect = Exception('Test error')
-            result = await list_resources(
-                resource_type='AWS::S3::Bucket', analyze_security=True, max_resources_to_analyze=5
-            )
-            assert 'security_analysis' in result
-            assert 'test' in result['security_analysis']
-            assert 'error' in result['security_analysis']['test']
-
     @patch('awslabs.ccapi_mcp_server.server.generate_infrastructure_code_impl')
     @pytest.mark.asyncio
     async def test_generate_infrastructure_code_default_region(self, mock_impl):
@@ -774,50 +695,6 @@ class TestTools:
         mock_impl.assert_called_once()
         call_args = mock_impl.call_args[1]
         assert call_args['region'] == 'us-east-1'
-
-    @patch('awslabs.ccapi_mcp_server.server.get_aws_client')
-    @patch('awslabs.ccapi_mcp_server.server.check_environment_variables')
-    @pytest.mark.asyncio
-    async def test_get_resource_security_analysis_env_error(self, mock_env, mock_client):
-        """Test get_resource security analysis with env error - covers lines 352-354."""
-        from awslabs.ccapi_mcp_server.server import get_resource
-
-        mock_client.return_value.get_resource.return_value = {
-            'ResourceDescription': {'Identifier': 'test', 'Properties': '{}'}
-        }
-        mock_env.return_value = {'properly_configured': False}
-
-        result = await get_resource(
-            resource_type='AWS::S3::Bucket', identifier='test', analyze_security=True
-        )
-
-        assert 'security_analysis' in result
-        assert (
-            result['security_analysis']['message']
-            == 'Security analysis not available in base version'
-        )
-
-    @patch('awslabs.ccapi_mcp_server.server.get_aws_client')
-    @patch('awslabs.ccapi_mcp_server.server.check_environment_variables')
-    @pytest.mark.asyncio
-    async def test_get_resource_security_analysis_exception(self, mock_env, mock_client):
-        """Test get_resource security analysis with exception - covers lines 355-357."""
-        from awslabs.ccapi_mcp_server.server import get_resource
-
-        mock_client.return_value.get_resource.return_value = {
-            'ResourceDescription': {'Identifier': 'test', 'Properties': '{}'}
-        }
-        mock_env.side_effect = Exception('Test exception')
-
-        result = await get_resource(
-            resource_type='AWS::S3::Bucket', identifier='test', analyze_security=True
-        )
-
-        assert 'security_analysis' in result
-        assert (
-            result['security_analysis']['message']
-            == 'Security analysis not available in base version'
-        )
 
     @pytest.mark.asyncio
     async def test_additional_coverage_paths(self):
@@ -899,29 +776,6 @@ class TestTools:
 
             with pytest.raises(ClientError):
                 await list_resources(resource_type='AWS::S3::Bucket')
-
-    @patch('awslabs.ccapi_mcp_server.server.get_aws_client')
-    @pytest.mark.asyncio
-    async def test_list_resources_note_generation(self, mock_client):
-        """Test list_resources note generation - covers line 189."""
-        from awslabs.ccapi_mcp_server.server import list_resources
-
-        # Create more resources than max_resources_to_analyze
-        resource_descriptions = [{'Identifier': f'bucket-{i}'} for i in range(10)]
-
-        mock_paginator = MagicMock()
-        mock_paginator.paginate.return_value = [{'ResourceDescriptions': resource_descriptions}]
-        mock_client.return_value.get_paginator.return_value = mock_paginator
-
-        with patch('awslabs.ccapi_mcp_server.server.get_resource') as mock_get:
-            mock_get.return_value = {'security_analysis': {'passed': True}}
-
-            result = await list_resources(
-                resource_type='AWS::S3::Bucket', analyze_security=True, max_resources_to_analyze=5
-            )
-
-            assert 'note' in result
-            assert 'Security analysis limited to first 5 resources' in result['note']
 
     @pytest.mark.asyncio
     async def test_update_resource_session_readonly_mode(self):

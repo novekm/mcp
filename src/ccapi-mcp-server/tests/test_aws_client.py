@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Tests for the cfn MCP Server."""
+"""Tests for the CCAPI MCP Server."""
 
 import pytest
 from awslabs.ccapi_mcp_server.aws_client import get_aws_client
