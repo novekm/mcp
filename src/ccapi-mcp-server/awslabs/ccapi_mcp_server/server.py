@@ -31,7 +31,6 @@ from awslabs.ccapi_mcp_server.infrastructure_generator import (
     generate_infrastructure_code as generate_infrastructure_code_impl,
 )
 from awslabs.ccapi_mcp_server.schema_manager import schema_manager
-from awslabs.ccapi_mcp_server.security_validator import validate_security_check_result
 from mcp.server.fastmcp import FastMCP
 from os import environ
 from pydantic import Field
@@ -394,7 +393,9 @@ async def generate_infrastructure_code(
         'properties_for_explanation': result[
             'properties'
         ],  # Make properties visible for explain() tool
-        'cloudformation_template_for_explain': result.get('cloudformation_template', result['properties']),  # Make CloudFormation template available for explain() tool
+        'cloudformation_template_for_explain': result.get(
+            'cloudformation_template', result['properties']
+        ),  # Make CloudFormation template available for explain() tool
     }
 
 
@@ -449,9 +450,19 @@ async def explain(
         execution_token: New token for infrastructure operations (if applicable)
     """
     execution_token = None
+    explanation_content = None
+
+    # Check if we have valid input
+    has_properties_token = (
+        properties_token and isinstance(properties_token, str) and properties_token.strip()
+    )
+    has_content = content is not None and not hasattr(content, 'annotation')
+
+    if not has_properties_token and not has_content:
+        raise ClientError("Either 'content' or 'properties_token' must be provided")
 
     # Handle infrastructure operations with token workflow
-    if properties_token and isinstance(properties_token, str) and properties_token.strip():
+    if has_properties_token:
         # Infrastructure operation - consume properties_token
         if properties_token not in _properties_store:
             raise ClientError('Invalid properties token')
@@ -473,7 +484,7 @@ async def explain(
         # Clean up original token
         del _properties_store[properties_token]
 
-    elif content is not None:
+    elif has_content:
         # General data explanation or delete operations
         explanation_content = content
 
@@ -488,12 +499,16 @@ async def explain(
                 'explained': True,
                 'operation': operation,
             }
-    else:
-        raise ClientError("Either 'content' or 'properties_token' must be provided")
+
+    # Convert FieldInfo objects to their default values for testing
+    context_str = context if isinstance(context, str) else ''
+    operation_str = operation if isinstance(operation, str) else 'analyze'
+    format_str = format if isinstance(format, str) else 'detailed'
+    user_intent_str = user_intent if isinstance(user_intent, str) else ''
 
     # Generate comprehensive explanation based on content type and format
     explanation = _generate_explanation(
-        explanation_content, context, operation, format, user_intent
+        explanation_content, context_str, operation_str, format_str, user_intent_str
     )
 
     # Force the LLM to see the response by making it very explicit
@@ -582,7 +597,8 @@ async def update_resource(
         description='Execution token from explain_infrastructure() to ensure exact properties with default tags are used'
     ),
     checkov_validation_token: str = Field(
-        default='', description='Validation token from run_checkov() to ensure security checks were performed (only required when SECURITY_SCANNING=enabled)'
+        default='',
+        description='Validation token from run_checkov() to ensure security checks were performed (only required when SECURITY_SCANNING=enabled)',
     ),
     skip_security_check: bool = Field(False, description='Skip security checks (not recommended)'),
 ) -> dict:
@@ -633,10 +649,10 @@ async def update_resource(
         raise ClientError(
             'You have configured this tool in readonly mode. To make this change you will have to update your configuration.'
         )
-        
+
     # Check if security scanning is enabled via environment variable
     security_scanning_enabled = environ.get('SECURITY_SCANNING', 'enabled').lower() == 'enabled'
-    
+
     # Validate checkov validation token if security scanning is enabled
     if security_scanning_enabled and not checkov_validation_token:
         raise ClientError('Security validation token required (run run_checkov() first)')
@@ -697,7 +713,8 @@ async def create_resource(
         description='Execution token from explain_infrastructure() - properties will be retrieved from this token'
     ),
     checkov_validation_token: str = Field(
-        default='', description='Validation token from run_checkov() to ensure security checks were performed (only required when SECURITY_SCANNING=enabled)'
+        default='',
+        description='Validation token from run_checkov() to ensure security checks were performed (only required when SECURITY_SCANNING=enabled)',
     ),
     skip_security_check: bool = Field(False, description='Skip security checks (not recommended)'),
 ) -> dict:
@@ -727,10 +744,10 @@ async def create_resource(
     # Basic input validation
     if not resource_type:
         raise ClientError('Resource type is required')
-        
+
     # Check if security scanning is enabled via environment variable
     security_scanning_enabled = environ.get('SECURITY_SCANNING', 'enabled').lower() == 'enabled'
-    
+
     # Validate checkov validation token if security scanning is enabled
     if security_scanning_enabled and not checkov_validation_token:
         raise ClientError('Security validation token required (run run_checkov() first)')
@@ -1279,7 +1296,9 @@ async def check_environment_variables() -> dict:
         'aws_region': cred_check.get('region') or 'us-east-1',
         'properly_configured': cred_check.get('valid', False),
         'readonly_mode': Context.readonly_mode(),
-        'aws_auth_type': cred_check.get('credential_source') if cred_check.get('credential_source') == 'env' else cred_check.get('profile_auth_type'),
+        'aws_auth_type': cred_check.get('credential_source')
+        if cred_check.get('credential_source') == 'env'
+        else cred_check.get('profile_auth_type'),
         'needs_profile': cred_check.get('needs_profile', False),
         'error': cred_check.get('error'),
     }
@@ -1300,11 +1319,11 @@ async def get_aws_session_info(
     IMPORTANT: Always display the AWS context information to the user when this tool is called.
     Show them: AWS Profile (or "Environment Variables"), Authentication Type, Account ID, and Region so they know
     exactly which AWS account and region will be affected by any operations.
-    
+
     Authentication types to display:
     - 'env': "Environment Variables (AWS_ACCESS_KEY_ID)"
     - 'sso_profile': "AWS SSO Profile"
-    - 'assume_role_profile': "Assume Role Profile" 
+    - 'assume_role_profile': "Assume Role Profile"
     - 'standard_profile': "Standard AWS Profile"
     - 'profile': "AWS Profile"
 
@@ -1368,7 +1387,9 @@ async def get_aws_session_info(
             else ''
         ),
         'credentials_valid': True,
-        'aws_auth_type': cred_check.get('credential_source') if cred_check.get('credential_source') == 'env' else cred_check.get('profile_auth_type'),
+        'aws_auth_type': cred_check.get('credential_source')
+        if cred_check.get('credential_source') == 'env'
+        else cred_check.get('profile_auth_type'),
     }
 
     # Add masked environment variables if using env vars

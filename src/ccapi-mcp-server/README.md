@@ -340,7 +340,7 @@ Prepares resource properties for Cloud Control API operations, applies default m
 
 **MANDATORY**: Explains any data in clear, human-readable format. For infrastructure operations, this tool consumes the `properties_token` and returns an `execution_token` that must be used for create/update/delete operations.
 
-**Infrastructure workflow**: 
+**Infrastructure workflow**:
 - Takes `properties_token` from `generate_infrastructure_code()`
 - Provides comprehensive explanation of what will be created/updated/deleted
 - Returns `execution_token` for use with `create_resource()`/`update_resource()`/`delete_resource()`
@@ -377,7 +377,7 @@ Get schema information for an AWS CloudFormation resource.
 
 **Requirements**: `aws_session_info` from `get_aws_session_info()` AND `execution_token` from `explain()`
 
-**Security Requirements**: 
+**Security Requirements**:
 - When SECURITY_SCANNING=enabled (default): Requires `checkov_validation_token` from `run_checkov()`
 - When SECURITY_SCANNING=disabled: Shows security warning but proceeds without validation token
 
@@ -397,7 +397,7 @@ Gets details of a specific AWS resource using the AWS Cloud Control API.
 
 **Requirements**: `aws_session_info` from `get_aws_session_info()` AND `execution_token` from `explain()`
 
-**Security Requirements**: 
+**Security Requirements**:
 - When SECURITY_SCANNING=enabled (default): Requires `checkov_validation_token` from `run_checkov()`
 - When SECURITY_SCANNING=disabled: Shows security warning but proceeds without validation token
 
