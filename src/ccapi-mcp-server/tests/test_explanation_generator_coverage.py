@@ -79,11 +79,15 @@ class TestExplanationGeneratorCoverage:
 
     def test_explain_dict_with_underscore_keys(self):
         """Test _explain_dict ignores keys starting with underscore."""
-        data = {'normal_key': 'value', '_private_key': 'hidden', '__internal': 'also hidden'}
+        data = {
+            'normal_key': 'value',
+            '_private_key': 'hidden',  # pragma: allowlist secret
+            '__internal': 'also hidden',
+        }  # pragma: allowlist secret
         result = _explain_dict(data, 'detailed')
 
-        assert 'normal_key' in result
-        assert '_private_key' not in result
+        assert 'normal_key' in result  # pragma: allowlist secret
+        assert '_private_key' not in result  # pragma: allowlist secret
         assert '__internal' not in result
 
     def test_explain_dict_nested_detailed_format(self):
@@ -187,10 +191,13 @@ class TestExplanationGeneratorCoverage:
 
     def test_explain_dict_non_detailed_format(self):
         """Test _explain_dict with non-detailed format."""
-        data = {'nested': {'key': 'value'}, 'list_items': ['a', 'b', 'c']}
+        data = {
+            'nested': {'key': 'value'},
+            'list_items': ['a', 'b', 'c'],
+        }  # pragma: allowlist secret
         result = _explain_dict(data, 'summary')
 
         assert 'nested' in result
         assert 'Nested configuration' in result
         # Should not show detailed breakdown in summary format
-        assert 'key:' not in result
+        assert 'key:' not in result  # pragma: allowlist secret
