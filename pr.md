@@ -43,10 +43,10 @@ Users had no standardized way to:
 The server enforces a secure, transparent workflow that **cannot be bypassed**:
 
 ```
-1. generate_infrastructure_code() 
+1. generate_infrastructure_code()
    → Returns properties_token + properties_for_explanation
 
-2. explain(properties_token=token) 
+2. explain(properties_token=token)
    → MANDATORY: Shows complete resource breakdown to user
    → Returns execution_token (consumes properties_token)
 
