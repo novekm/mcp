@@ -246,9 +246,9 @@ class TestFinal98Coverage:
         with patch('awslabs.ccapi_mcp_server.schema_manager.get_aws_client') as mock_client:
             mock_client.return_value.describe_type.return_value = {'Schema': 'invalid json {'}
 
-            # Should handle JSON parse error gracefully
-            result = await sm.get_schema('AWS::S3::Bucket', 'us-east-1')
-            assert result is not None
+            # Should raise ClientError for invalid JSON
+            with pytest.raises(ClientError, match='Failed to download valid schema'):
+                await sm.get_schema('AWS::S3::Bucket', 'us-east-1')
 
     # Explanation Generator - Missing line 133
     def test_explanation_generator_non_detailed_nested(self):
